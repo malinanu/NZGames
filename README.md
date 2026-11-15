@@ -1,32 +1,42 @@
-# NZ Games
+# Kiwi Christmas Games
 
-Mobile-first three.js games for a Kiwi Christmas campaign.
+A mobile-first three.js open world: pick a character, walk around a Kiwi summer town, and step
+into a game's ring to play it in place.
 
-| Game | Path | Status |
+| Game | Where | Status |
 |---|---|---|
-| Jandal Flip | `/jandal-flip/` | Playable prototype |
-| Trap Line | `/trap-line/` | Playable prototype |
+| Jandal Flip | Bach backyard | Playable |
+| Trap Line | Bush block | Playable |
+| 10 more (cricket, water bombs, BBQ, ute, pav lab, parade, flags, seagull, garden, tilt) | Marked in the world | Coming soon |
+| Kōrero Kirihimete, Star Waka | Hidden unless `?preview` | Not built; need a Māori reviewer first |
 
 ## Run
 
 ```bash
 npm install
-npm run dev      # http://localhost:5173/jandal-flip/
+npm run dev      # http://localhost:5173/
 npm run build    # static site in dist/
 ```
 
-`?seed=anything` on either game loads a fixed course/block instead of today's (NZ date).
+Needs Node 22. URL options: `?seed=anything` fixes the daily course/block, `?reveal` shows every
+predator at night in Trap Line, `?preview` shows gated zones.
 
 ## Layout
 
-- `src/shared/` – asset loading, seeded RNG / NZ daily date, brand config (`brand.ts`).
-- `src/jandal/` – Jandal Flip: `course.ts` (daily course), `main.ts` (game loop, physics, input), `ui.ts` (HUD and share card).
-- `src/trapline/` – Trap Line: `sim.ts` (pure, seeded rules: map, predator movement, nights), `main.ts` (board, night playback, HUD), `models.ts` (procedural critters and gear). `?reveal=1` shows every predator at night.
+- `src/engine/` – renderer and loop (`app.ts`), thumb-stick and keyboard (`input.ts`), camera rig, 2D walking colliders.
+- `src/character/` – the six KayKit Adventurers re-dressed as Kiwi holidaymakers (`character.ts`) and the walking controller.
+- `src/world/` – the town (`map.ts`), zone list (`zones.ts`), zone loading and prompts (`zoneManager.ts`), shared game HUD (`zoneUi.ts`), all CSS (`world.css`).
+- `src/zones/<game>/zone.ts` – one game each, implementing `GameZone` from `src/zones/types.ts`. Each is lazy-loaded when the player walks near it.
 - `assets-src/kaykit/` – GLTF sources from the KayKit packs (CC0, Kay Lousberg, www.kaylousberg.com).
-- `scripts/models.json` – the models the games actually ship. `npm run assets` copies only those into `public/models/` (git-ignored, regenerated on dev/build).
+- `scripts/models.json` – the props that ship. `npm run assets` copies them to `public/models/` and trims the character animation files (both git-ignored, regenerated on dev/build).
+- `.claude/skills/` – third-party UI skills (impeccable, ui-ux-pro-max, design-taste-frontend) used when working on the interface.
 
-To use another KayKit model, add it to `scripts/models.json` and load it with `spawnProp('<pack>/<name>', { width | height })`, which re-centres it and scales it to metres (the packs use different unit scales).
+## Adding a game
 
-## Brand
+1. Create `src/zones/<id>/zone.ts` exporting `createZone(ctx)`. Build everything under `ctx.root` (local space), use `ctx.ui` for the HUD and end card, and `ctx.rig.shot()` for the camera.
+2. Add `load: () => import('../zones/<id>/zone')` to its entry in `src/world/zones.ts`.
 
-All campaign-specific text and colours live in `src/shared/brand.ts`. The palette is a placeholder: official logo files and colours need to come from the client's brand kit.
+## Brand and compliance
+
+Brand text and colours live in `src/shared/brand.ts`. The rules the game follows as advertising
+for an occasional food are in `docs/compliance.md`.

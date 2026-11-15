@@ -7,7 +7,7 @@ export default defineConfig({
     target: 'es2022',
     rollupOptions: {
       input: {
-        hub: resolve(__dirname, 'index.html'),
+        world: resolve(__dirname, 'index.html'),
         jandal: resolve(__dirname, 'jandal-flip/index.html'),
         trapline: resolve(__dirname, 'trap-line/index.html'),
       },

@@ -1,51 +1,30 @@
 {
   "holiday": [
-    "present_A_red",
-    "present_B_blue",
-    "present_C_green",
-    "present_D_yellow",
-    "present_E_white",
-    "present_sphere_A_red",
-    "christmas_tree_decorated",
-    "footstool_red",
-    "stool",
-    "carpet_round_large",
-    "football"
+    "present_A_red", "present_A_green", "present_B_blue", "present_C_green", "present_D_yellow", "present_E_white",
+    "present_F_red", "present_sphere_A_red", "christmas_tree_decorated", "footstool_red", "stool",
+    "carpet_round_large", "football", "lantern", "train_locomotive", "wreath"
   ],
   "city": [
-    "car_stationwagon",
-    "bench"
+    "road_straight", "road_junction", "streetlight", "bench",
+    "car_sedan", "car_hatchback", "car_stationwagon", "car_taxi", "car_police",
+    "building_A_withoutBase", "building_B_withoutBase", "building_C_withoutBase", "building_D_withoutBase",
+    "building_E_withoutBase", "building_F_withoutBase", "building_G_withoutBase", "building_H_withoutBase"
   ],
   "hexagon": [
     "buildings/neutral/fence_wood_straight",
     "buildings/blue/building_home_A_blue",
+    "buildings/red/building_home_B_red",
+    "buildings/yellow/building_tower_A_yellow",
     "decoration/props/pallet",
-    "tiles/base/hex_grass",
-    "tiles/base/hex_water"
+    "tiles/base/hex_grass", "tiles/base/hex_water"
   ],
-  "furniture": [
-    "table_low",
-    "table_medium_long",
-    "chair_A_wood"
-  ],
-  "mixedbag1": [
-    "umbrella_blue",
-    "umbrella_pink",
-    "flax_flower_A",
-    "flax_flower_B"
-  ],
-  "restaurant": [
-    "food_burger",
-    "plate"
-  ],
+  "furniture": ["table_low", "table_medium_long", "chair_A_wood"],
+  "mixedbag1": ["umbrella_blue", "umbrella_pink", "umbrella_yellow", "umbrella_green", "flax_flower_A", "flax_flower_B", "waterbottle_A"],
+  "restaurant": ["food_burger", "plate", "stove_single"],
   "forest": [
-    "Tree_1_A_Color1",
-    "Tree_2_A_Color1",
-    "Tree_3_A_Color1",
-    "Bush_1_A_Color1",
-    "Bush_2_B_Color1",
-    "Grass_1_A_Color1",
-    "Tree_1_B_Color1",
-    "Tree_4_A_Color1"
-  ]
+    "Tree_1_A_Color1", "Tree_1_B_Color1", "Tree_2_A_Color1", "Tree_2_B_Color1", "Tree_3_A_Color1", "Tree_4_A_Color1",
+    "Bush_1_A_Color1", "Bush_2_B_Color1", "Grass_1_A_Color1", "Rock_1_A_Color1"
+  ],
+  "platformer": ["red/flag_A_red", "yellow/flag_A_yellow", "neutral/structure_C", "neutral/sign", "blue/star_blue"],
+  "resource": ["Wood_Log_Stack", "Pallet_Wood_Covered_A"]
 }
