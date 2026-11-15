@@ -11,8 +11,10 @@ export class App {
   readonly canvas: HTMLCanvasElement;
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
-  readonly camera = new THREE.PerspectiveCamera(55, 1, 0.1, 400);
+  readonly camera = new THREE.PerspectiveCamera(55, 1, 0.2, 900);
   private readonly updates = new Set<UpdateFn>();
+  /** Runs once, straight after the next frame is drawn (used to grab a snapshot). */
+  private afterRender: (() => void)[] = [];
   private readonly clock = new THREE.Clock();
   private elapsed = 0;
   private maxPixelRatio = Math.min(window.devicePixelRatio, 2);
@@ -39,6 +41,20 @@ export class App {
     return () => this.updates.delete(fn);
   }
 
+  /** A small JPEG of what is on screen right now. Must be read straight after a render. */
+  snapshot(width = 320): string {
+    this.renderer.render(this.scene, this.camera);
+    const src = this.renderer.domElement;
+    const out = document.createElement('canvas');
+    out.width = width;
+    out.height = Math.round(width * 0.66);
+    // Centre-crop to a postcard shape.
+    const srcH = Math.min(src.height, src.width * 0.66);
+    const srcW = srcH / 0.66;
+    out.getContext('2d')!.drawImage(src, (src.width - srcW) / 2, (src.height - srcH) * 0.4, srcW, srcH, 0, 0, out.width, out.height);
+    return out.toDataURL('image/jpeg', 0.72);
+  }
+
   resize(): void {
     const w = window.innerWidth;
     const h = window.innerHeight;
@@ -57,6 +73,9 @@ export class App {
       this.adaptQuality(dt);
       for (const fn of this.updates) fn(dt, this.elapsed);
       this.renderer.render(this.scene, this.camera);
+      if (this.afterRender.length) {
+        for (const fn of this.afterRender.splice(0)) fn();
+      }
       requestAnimationFrame(frame);
     };
     requestAnimationFrame(frame);

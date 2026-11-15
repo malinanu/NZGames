@@ -128,7 +128,11 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
   root.add(mat);
 
   // -- Aim preview and confetti ---------------------------------------------
-  const previewDots = new THREE.InstancedMesh(new THREE.SphereGeometry(0.05, 8, 6), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.9 }), PREVIEW_DOTS);
+  const previewDots = new THREE.InstancedMesh(new THREE.SphereGeometry(0.075, 10, 8), new THREE.MeshBasicMaterial({ color: '#ffffff' }), PREVIEW_DOTS);
+  // A dark shell behind each dot so the arc reads against grass, sky and sand alike.
+  const previewOutline = new THREE.InstancedMesh(new THREE.SphereGeometry(0.1, 10, 8), new THREE.MeshBasicMaterial({ color: '#17213f', side: THREE.BackSide }), PREVIEW_DOTS);
+  previewOutline.frustumCulled = false;
+  previewDots.add(previewOutline);
   previewDots.visible = false;
   previewDots.frustumCulled = false;
   root.add(previewDots);
@@ -212,8 +216,8 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
   const setCameraForHole = () => {
     const { hole } = current();
     const fwd = new THREE.Vector3(Math.sin(hole.angle), 0, -Math.cos(hole.angle));
-    camGoal.pos.copy(fwd).multiplyScalar(-3.4).setY(2.5);
-    camGoal.look.copy(fwd).multiplyScalar(hole.distance * 0.6).setY(0.45);
+    camGoal.pos.copy(fwd).multiplyScalar(-4.6).setY(3.3);
+    camGoal.look.copy(fwd).multiplyScalar(hole.distance * 0.55).setY(0.3);
     ctx.rig.shot(toWorld(camGoal.pos), toWorld(camGoal.look));
   };
   const refreshHud = () => {
@@ -225,8 +229,8 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
   };
   const placePlayer = (yaw: number) => {
     // Stand ahead and to the left of the launch spot, out of the line of the flick, facing down the course.
-    const side = new THREE.Vector3(Math.cos(yaw), 0, Math.sin(yaw)).multiplyScalar(-1.25);
-    const back = new THREE.Vector3(-Math.sin(yaw), 0, Math.cos(yaw)).multiplyScalar(-0.6);
+    const side = new THREE.Vector3(Math.cos(yaw), 0, Math.sin(yaw)).multiplyScalar(-2.7);
+    const back = new THREE.Vector3(-Math.sin(yaw), 0, Math.cos(yaw)).multiplyScalar(-2.4);
     ctx.player.place(side.add(back), Math.PI - yaw);
   };
 
@@ -355,8 +359,10 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       const s = 1 - i / (PREVIEW_DOTS * 1.4);
       m.makeScale(s, s, s).setPosition(shot.velocity.x * t, LAUNCH_HEIGHT + shot.velocity.y * t - 0.5 * GRAVITY * t * t, shot.velocity.z * t);
       previewDots.setMatrixAt(i, m);
+      previewOutline.setMatrixAt(i, m);
     }
     previewDots.instanceMatrix.needsUpdate = true;
+    previewOutline.instanceMatrix.needsUpdate = true;
   };
   const onDown = (e: PointerEvent) => {
     if (phase !== 'aim' || dragStart) return;

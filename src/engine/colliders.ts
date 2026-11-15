@@ -52,6 +52,29 @@ export class Colliders {
     }
   }
 
+  /** True if a circle of this radius at (x, z) overlaps a large solid (used to keep the camera out of buildings). */
+  blocked(x: number, z: number, radius: number): boolean {
+    const gx = Math.floor(x / this.cell);
+    const gz = Math.floor(z / this.cell);
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        for (const c of this.grid.get(`${gx + dx},${gz + dz}`) ?? []) {
+          if (c.kind === 'circle') {
+            // Thin things (lamp posts, tree trunks) don't hide the player: ignore them.
+            if (c.r >= 1.6 && Math.hypot(x - c.x, z - c.z) < c.r + radius) return true;
+          } else if (Math.min(c.hx, c.hz) > 1.2) {
+            const cos = Math.cos(c.rot);
+            const sin = Math.sin(c.rot);
+            const lx = (x - c.x) * cos - (z - c.z) * sin;
+            const lz = (x - c.x) * sin + (z - c.z) * cos;
+            if (Math.abs(lx) < c.hx + radius && Math.abs(lz) < c.hz + radius) return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
   /** Pushes `p` (y ignored) out of anything it overlaps. */
   resolve(p: THREE.Vector3, radius: number): void {
     for (let pass = 0; pass < 2; pass++) {

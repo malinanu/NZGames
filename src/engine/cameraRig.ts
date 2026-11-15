@@ -16,6 +16,9 @@ export class CameraRig {
   private readonly goalLook = new THREE.Vector3();
   private sharpness = 6;
   private snapNext = true;
+  /** Set by the world: true where the camera would be inside a building. */
+  obstructed: ((x: number, z: number) => boolean) | null = null;
+  private pull = 1;
 
   constructor(private readonly camera: THREE.PerspectiveCamera) {}
 
@@ -43,7 +46,19 @@ export class CameraRig {
   update(dt: number, subject: THREE.Vector3): void {
     if (this.mode === 'follow') {
       const back = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
-      this.goalPos.copy(subject).addScaledVector(back, this.distance).setY(subject.y + this.height);
+      // Slide the camera in towards the player rather than letting it sit inside a building.
+      let clear = 1;
+      if (this.obstructed) {
+        for (let i = 1; i <= 8; i++) {
+          const t = i / 8;
+          if (this.obstructed(subject.x + back.x * this.distance * t, subject.z + back.z * this.distance * t)) {
+            clear = Math.max(0.22, (i - 1) / 8);
+            break;
+          }
+        }
+      }
+      this.pull += (clear - this.pull) * Math.min(1, dt * (clear < this.pull ? 14 : 3));
+      this.goalPos.copy(subject).addScaledVector(back, this.distance * this.pull).setY(subject.y + this.height * (0.55 + 0.45 * this.pull));
       this.goalLook.copy(subject).setY(subject.y + 1.3);
       // Ease back to normal follow speed after a shot hands over.
       this.sharpness += (6 - this.sharpness) * Math.min(1, dt * 1.5);

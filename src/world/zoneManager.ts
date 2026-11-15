@@ -6,9 +6,10 @@ import type { GameZone, ZoneContext, ZoneDef } from '../zones/types';
 import { icon } from './icons';
 import { ZoneUi } from './zoneUi';
 import { ZONES } from './zones';
+import { groundHeight } from './terrain';
 
-const BUILD_RADIUS = 34;
-const DISPOSE_RADIUS = 52;
+const BUILD_RADIUS = 46;
+const DISPOSE_RADIUS = 70;
 const PROMPT_RADIUS = 2.6;
 
 interface Slot {
@@ -61,11 +62,12 @@ export class ZoneManager {
       if (def.gated && !opts.preview) continue;
       const root = new THREE.Group();
       root.name = `zone:${def.id}`;
-      root.position.set(def.x, 0, def.z);
+      root.position.set(def.x, groundHeight(def.x, def.z), def.z);
       root.rotation.y = def.facing;
       opts.scene.add(root);
       const marker = buildMarker(!!def.load);
-      marker.position.copy(this.toWorld(root, new THREE.Vector3(def.start.x, 0.02, def.start.z)));
+      marker.position.copy(this.toWorld(root, new THREE.Vector3(def.start.x, 0, def.start.z)));
+      marker.position.y = groundHeight(marker.position.x, marker.position.z) + 0.05;
       opts.scene.add(marker);
       const label = document.createElement('div');
       label.className = `world-label ${def.load ? '' : 'is-soon'}`;
@@ -200,18 +202,18 @@ export class ZoneManager {
 
   private placeLabel(slot: Slot, distance: number): void {
     const el = slot.label;
-    if (this.active || distance > 30) {
+    if (this.active || distance > 60) {
       el.style.opacity = '0';
       return;
     }
-    this.projected.copy(slot.marker.position).setY(3.3).project(this.opts.camera);
+    this.projected.copy(slot.marker.position).setY(slot.marker.position.y + 3.3).project(this.opts.camera);
     if (this.projected.z > 1) {
       el.style.opacity = '0';
       return;
     }
     const x = ((this.projected.x + 1) / 2) * window.innerWidth;
     const y = ((1 - this.projected.y) / 2) * window.innerHeight;
-    el.style.opacity = String(THREE.MathUtils.clamp((30 - distance) / 8, 0, 1));
+    el.style.opacity = String(THREE.MathUtils.clamp((60 - distance) / 12, 0, 1));
     el.style.transform = `translate(-50%, -100%) translate(${x}px, ${y}px)`;
   }
 

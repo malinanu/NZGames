@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { Colliders } from '../engine/colliders';
 import type { Input } from '../engine/input';
 import type { Character } from './character';
+import { groundHeight, walkable } from '../world/terrain';
 
 const WALK = 2.6;
 const RUN = 6.2;
@@ -28,7 +29,7 @@ export class PlayerController {
   ) {}
 
   place(x: number, z: number, yaw: number): void {
-    this.position.set(x, 0, z);
+    this.position.set(x, groundHeight(x, z), z);
     this.yaw = yaw;
     this.velocity.set(0, 0, 0);
     this.vy = 0;
@@ -61,19 +62,29 @@ export class PlayerController {
       this.character.play('Jump_Start', { fade: 0.08, then: () => this.character.play('Jump_Idle', { fade: 0.1 }) });
     }
     this.vy -= GRAVITY * dt;
+    const fromX = this.position.x;
+    const fromZ = this.position.z;
     this.position.x += this.velocity.x * dt;
     this.position.z += this.velocity.z * dt;
+    this.colliders.resolve(this.position, RADIUS);
+    // Deep water and the edge of the world turn you back.
+    if (!walkable(this.position.x, this.position.z)) {
+      this.position.x = fromX;
+      this.position.z = fromZ;
+      this.velocity.set(0, 0, 0);
+    }
+    const ground = groundHeight(this.position.x, this.position.z);
     this.position.y += this.vy * dt;
-    if (this.position.y <= 0) {
+    if (this.position.y <= ground || (this.grounded && this.position.y - ground < 0.5)) {
       if (!this.grounded) {
         this.landing = 0.22;
         this.character.play('Jump_Land', { fade: 0.06, speed: 1.6 });
       }
-      this.position.y = 0;
+      // Ease onto small steps (kerbs, ramps) instead of popping.
+      this.position.y = this.grounded ? this.position.y + (ground - this.position.y) * Math.min(1, dt * 18) : ground;
       this.vy = 0;
       this.grounded = true;
     }
-    this.colliders.resolve(this.position, RADIUS);
 
     const speed = this.speed;
     if (speed > 0.15) {

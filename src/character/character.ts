@@ -152,38 +152,43 @@ function mat(colour: string): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({ color: colour, roughness: 0.75 });
 }
 
-function buildHat(kind: CharacterDef['hat'], colour: string): THREE.Object3D | null {
+/**
+ * Hats are solid lathed shapes sized from the wearer's head: `r` is the head's half-width.
+ * The origin sits where the hat meets the head.
+ */
+function buildHat(kind: CharacterDef['hat'], colour: string, r: number): THREE.Object3D | null {
   const g = new THREE.Group();
-  if (kind === 'santa') {
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.62, 16), mat(colour));
-    cone.position.y = 0.33;
-    cone.rotation.z = -0.35;
-    const brim = new THREE.Mesh(new THREE.TorusGeometry(0.33, 0.085, 8, 20), mat('#fbfbf6'));
-    brim.rotation.x = Math.PI / 2;
-    brim.position.y = 0.04;
-    const pom = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), mat('#fbfbf6'));
-    pom.position.set(0.24, 0.6, 0);
-    g.add(cone, brim, pom);
+  const lathe = (profile: [number, number][], col: string) => {
+    const m = new THREE.Mesh(new THREE.LatheGeometry(profile.map(([x, y]) => new THREE.Vector2(x * r, y * r)), 24), mat(col));
+    (m.material as THREE.MeshStandardMaterial).side = THREE.DoubleSide;
+    return m;
+  };
+  if (kind === 'bucket') {
+    // Flat-topped crown flaring into a short, drooping brim with real thickness.
+    g.add(lathe([[0, 0.62], [0.78, 0.62], [0.86, 0.56], [1.0, 0.02], [1.42, -0.2], [1.44, -0.26], [1.38, -0.27], [0.97, -0.06], [0.9, 0.0]], colour));
   } else if (kind === 'sunhat') {
-    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.66, 0.04, 24), mat(colour));
-    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.34, 0.24, 20), mat(colour));
-    crown.position.y = 0.13;
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.345, 0.345, 0.07, 20), mat('#e8578e'));
-    band.position.y = 0.05;
-    g.add(brim, crown, band);
-  } else if (kind === 'bucket') {
-    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.36, 0.26, 18), mat(colour));
-    crown.position.y = 0.13;
-    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.52, 0.035, 22, 1, true), mat(colour));
-    (brim.material as THREE.MeshStandardMaterial).side = THREE.DoubleSide;
-    brim.position.y = 0.01;
-    g.add(crown, brim);
+    g.add(lathe([[0, 0.5], [0.72, 0.5], [0.84, 0.42], [0.96, 0.03], [1.95, -0.1], [1.98, -0.16], [1.9, -0.17], [0.94, -0.04]], colour));
+    g.add(lathe([[0.9, 0.2], [0.985, 0.2], [0.995, 0.04], [0.97, 0.04]], '#e8578e'));
   } else if (kind === 'cap') {
-    const crown = new THREE.Mesh(new THREE.SphereGeometry(0.36, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), mat(colour));
-    const peak = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.03, 18, 1, false, -Math.PI / 2, Math.PI), mat(colour));
-    peak.position.set(0, 0.02, 0.22);
-    peak.scale.z = 1.3;
-    g.add(crown, peak);
+    const crown = new THREE.Mesh(new THREE.SphereGeometry(r * 1.04, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), mat(colour));
+    crown.scale.y = 0.72;
+    const peak = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.9, r * 0.9, r * 0.07, 20, 1, false, -Math.PI / 2, Math.PI), mat(colour));
+    peak.position.set(0, r * 0.05, r * 0.62);
+    peak.scale.z = 1.25;
+    const button = new THREE.Mesh(new THREE.SphereGeometry(r * 0.09, 8, 6), mat(colour));
+    button.position.y = r * 0.74;
+    g.add(crown, peak, button);
+  } else if (kind === 'santa') {
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(r * 0.98, r * 1.7, 18), mat(colour));
+    cone.position.y = r * 0.85;
+    cone.rotation.z = -0.3;
+    cone.position.x = r * 0.2;
+    const fur = new THREE.Mesh(new THREE.TorusGeometry(r * 0.98, r * 0.2, 8, 22), mat('#fbfbf6'));
+    fur.rotation.x = Math.PI / 2;
+    fur.position.y = r * 0.08;
+    const pom = new THREE.Mesh(new THREE.SphereGeometry(r * 0.24, 10, 8), mat('#fbfbf6'));
+    pom.position.set(r * 0.78, r * 1.62, 0);
+    g.add(cone, fur, pom);
   } else {
     return null;
   }
@@ -235,18 +240,17 @@ function prepare(def: CharacterDef): Promise<THREE.Object3D> {
       // Hat on the head bone, sitting on top of the head mesh.
       const headBone = model.getObjectByName('head');
       const headMesh = model.getObjectByName(`${def.model.replace('_', '')}_Head`) ?? model.getObjectByName(`${def.model}_Head`);
-      const hat = buildHat(def.hat, def.hatColour);
+      // Size and seat the hat from the head mesh itself, so it fits every character.
+      const headBox = new THREE.Box3().setFromObject(headMesh ?? headBone ?? model);
+      const headR = Math.max(headBox.max.x - headBox.min.x, headBox.max.z - headBox.min.z) / 2;
+      const hat = buildHat(def.hat, def.hatColour, headR);
       if (headBone && hat) {
-        const top = new THREE.Box3().setFromObject(headMesh ?? headBone).max.y;
-        const world = new THREE.Vector3(0, top - 0.06, 0);
-        const bonePos = headBone.getWorldPosition(new THREE.Vector3());
-        world.x = bonePos.x;
-        world.z = bonePos.z;
+        const headH = headBox.max.y - headBox.min.y;
+        const world = new THREE.Vector3((headBox.min.x + headBox.max.x) / 2, headBox.max.y - headH * 0.3, (headBox.min.z + headBox.max.z) / 2);
         headBone.worldToLocal(world);
         hat.position.copy(world);
         // Bones carry the model scale; undo it so the hat keeps its metre size.
-        const s = headBone.getWorldScale(new THREE.Vector3()).x;
-        hat.scale.setScalar(1 / s);
+        hat.scale.setScalar(1 / headBone.getWorldScale(new THREE.Vector3()).x);
         // Keep the hat upright regardless of how the bone is oriented in bind pose.
         hat.quaternion.copy(headBone.getWorldQuaternion(new THREE.Quaternion()).invert());
         headBone.add(hat);
