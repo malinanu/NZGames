@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en-NZ">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#8fd6ff" />
+    <title>Jandal Flip</title>
+    <style>
+      :root {
+        --ink: #14204d;
+        --paper: #ffffff;
+        --pop: #ff4fa3;
+        --sun: #ffe14a;
+        font-family: ui-rounded, 'SF Pro Rounded', 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #8fd6ff; color: var(--ink); }
+      body { overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+      #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+      [hidden] { display: none !important; }
+
+      #hud { position: fixed; inset: 0; pointer-events: none; padding: max(12px, env(safe-area-inset-top)) 14px max(14px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; }
+      .bar { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+      .pill { background: rgba(255,255,255,.92); border-radius: 999px; padding: 8px 14px; font-weight: 800; font-size: 15px; box-shadow: 0 3px 0 rgba(20,32,77,.18); white-space: nowrap; }
+      .stack { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+      .stack.right { align-items: flex-end; }
+      #flicks { letter-spacing: 2px; }
+      #course-label { font-size: 12px; font-weight: 700; opacity: .85; padding: 5px 11px; }
+      #brand { margin-top: auto; align-self: center; font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #fff; text-shadow: 0 1px 0 rgba(20,32,77,.45); }
+
+      #toast { position: fixed; left: 50%; top: 24%; transform: translate(-50%, 10px) scale(.9); opacity: 0; transition: opacity .18s, transform .18s; background: var(--paper); border-radius: 18px; padding: 12px 20px; font-size: 22px; font-weight: 900; text-align: center; max-width: 86vw; box-shadow: 0 5px 0 rgba(20,32,77,.2); pointer-events: none; }
+      #toast.show { opacity: 1; transform: translate(-50%, 0) scale(1); }
+      #toast[data-tone='good'] { background: var(--sun); }
+
+      #hint { position: fixed; left: 50%; bottom: 17%; transform: translateX(-50%); background: rgba(20,32,77,.82); color: #fff; padding: 10px 18px; border-radius: 999px; font-weight: 800; font-size: 16px; pointer-events: none; animation: bob 1.4s ease-in-out infinite; white-space: nowrap; }
+      @keyframes bob { 50% { transform: translate(-50%, 8px); } }
+
+      #loading { position: fixed; inset: 0; display: grid; place-items: center; background: #8fd6ff; font-weight: 900; font-size: 22px; }
+
+      #end { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(20,32,77,.45); padding: 20px; }
+      .card { background: var(--paper); border-radius: 26px; padding: 26px 22px; width: min(360px, 100%); text-align: center; box-shadow: 0 8px 0 rgba(20,32,77,.25); }
+      .card h1 { margin: 0 0 4px; font-size: 26px; }
+      #end-grid { font-size: 38px; letter-spacing: 4px; margin: 14px 0 6px; }
+      #end-score { font-size: 30px; font-weight: 900; }
+      #end-best { font-size: 14px; opacity: .75; margin: 6px 0 18px; }
+      button { font: inherit; font-weight: 900; font-size: 18px; border: 0; border-radius: 999px; padding: 14px 22px; width: 100%; min-height: 52px; cursor: pointer; color: var(--ink); box-shadow: 0 4px 0 rgba(20,32,77,.25); }
+      #share { background: var(--sun); margin-bottom: 12px; }
+      #replay { background: #e8eefc; }
+      button:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(20,32,77,.25); }
+      @media (prefers-reduced-motion: reduce) { #hint { animation: none; } #toast { transition: none; } }
+    </style>
+  </head>
+  <body>
+    <canvas id="game" aria-label="Jandal Flip game"></canvas>
+
+    <div id="loading">Chucking on the jandals…</div>
+
+    <div id="hud" hidden>
+      <div class="bar">
+        <div class="stack">
+          <div class="pill" id="hole"></div>
+          <div class="pill" id="course-label"></div>
+        </div>
+        <div class="stack right">
+          <div class="pill" id="score">0 pts</div>
+          <div class="pill" id="flicks" aria-label="Flicks left"></div>
+        </div>
+      </div>
+      <div id="brand"></div>
+    </div>
+
+    <div id="hint" hidden>👇 Drag back &amp; let go</div>
+    <div id="toast" role="status" aria-live="polite"></div>
+
+    <div id="end" hidden>
+      <div class="card">
+        <h1>Jandal Flip</h1>
+        <div id="end-grid"></div>
+        <div id="end-score"></div>
+        <div id="end-best"></div>
+        <button id="share">Share result</button>
+        <button id="replay">Play again</button>
+      </div>
+    </div>
+
+    <script type="module" src="/src/jandal/main.ts"></script>
+  </body>
+</html>
