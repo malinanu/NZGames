@@ -5,7 +5,7 @@ Mobile-first three.js games for a Kiwi Christmas campaign.
 | Game | Path | Status |
 |---|---|---|
 | Jandal Flip | `/jandal-flip/` | Playable prototype |
-| Trap Line | `/trap-line/` | Not started |
+| Trap Line | `/trap-line/` | Playable prototype |
 
 ## Run
 
@@ -15,12 +15,13 @@ npm run dev      # http://localhost:5173/jandal-flip/
 npm run build    # static site in dist/
 ```
 
-`?seed=anything` on the Jandal Flip URL loads a fixed course instead of today's (NZ date).
+`?seed=anything` on either game loads a fixed course/block instead of today's (NZ date).
 
 ## Layout
 
 - `src/shared/` – asset loading, seeded RNG / NZ daily date, brand config (`brand.ts`).
 - `src/jandal/` – Jandal Flip: `course.ts` (daily course), `main.ts` (game loop, physics, input), `ui.ts` (HUD and share card).
+- `src/trapline/` – Trap Line: `sim.ts` (pure, seeded rules: map, predator movement, nights), `main.ts` (board, night playback, HUD), `models.ts` (procedural critters and gear). `?reveal=1` shows every predator at night.
 - `assets-src/kaykit/` – GLTF sources from the KayKit packs (CC0, Kay Lousberg, www.kaylousberg.com).
 - `scripts/models.json` – the models the games actually ship. `npm run assets` copies only those into `public/models/` (git-ignored, regenerated on dev/build).
 

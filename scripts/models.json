@@ -1,17 +1,51 @@
 {
   "holiday": [
-    "present_A_red", "present_B_blue", "present_C_green", "present_D_yellow", "present_E_white",
-    "present_sphere_A_red", "christmas_tree_decorated", "footstool_red", "stool",
-    "carpet_round_large", "football"
+    "present_A_red",
+    "present_B_blue",
+    "present_C_green",
+    "present_D_yellow",
+    "present_E_white",
+    "present_sphere_A_red",
+    "christmas_tree_decorated",
+    "footstool_red",
+    "stool",
+    "carpet_round_large",
+    "football"
   ],
-  "city": ["car_stationwagon", "bench"],
+  "city": [
+    "car_stationwagon",
+    "bench"
+  ],
   "hexagon": [
     "buildings/neutral/fence_wood_straight",
     "buildings/blue/building_home_A_blue",
-    "decoration/props/pallet"
+    "decoration/props/pallet",
+    "tiles/base/hex_grass",
+    "tiles/base/hex_water"
   ],
-  "furniture": ["table_low", "table_medium_long", "chair_A_wood"],
-  "mixedbag1": ["umbrella_blue", "umbrella_pink", "flax_flower_A", "flax_flower_B"],
-  "restaurant": ["food_burger", "plate"],
-  "forest": ["Tree_1_A_Color1", "Tree_2_A_Color1", "Tree_3_A_Color1", "Bush_1_A_Color1", "Bush_2_B_Color1", "Grass_1_A_Color1"]
+  "furniture": [
+    "table_low",
+    "table_medium_long",
+    "chair_A_wood"
+  ],
+  "mixedbag1": [
+    "umbrella_blue",
+    "umbrella_pink",
+    "flax_flower_A",
+    "flax_flower_B"
+  ],
+  "restaurant": [
+    "food_burger",
+    "plate"
+  ],
+  "forest": [
+    "Tree_1_A_Color1",
+    "Tree_2_A_Color1",
+    "Tree_3_A_Color1",
+    "Bush_1_A_Color1",
+    "Bush_2_B_Color1",
+    "Grass_1_A_Color1",
+    "Tree_1_B_Color1",
+    "Tree_4_A_Color1"
+  ]
 }

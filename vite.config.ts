@@ -9,6 +9,7 @@ export default defineConfig({
       input: {
         hub: resolve(__dirname, 'index.html'),
         jandal: resolve(__dirname, 'jandal-flip/index.html'),
+        trapline: resolve(__dirname, 'trap-line/index.html'),
       },
     },
   },
