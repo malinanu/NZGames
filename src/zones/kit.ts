@@ -113,21 +113,27 @@ export function best(game: string, seed: string, score: number, higherIsBetter =
 
 const CONFETTI_COLOURS = ['#ff4fa3', '#9be22d', '#27c4f5', '#ffd23f', '#8b5cf6', '#ff7a1a'];
 
-/** A burst of confetti (or water spray, with `colours`). Add `.object` to the scene, tick `update`. */
+/**
+ * A burst of confetti (or water spray, with `colours`). Add `.object` to the scene, tick
+ * `update`. Pieces are tiny instanced cubes rather than GL points: point sprites have no size
+ * in WebGPU, and tumbling flakes look better anyway.
+ */
 export function burst(count = 80, colours = CONFETTI_COLOURS, size = 0.13) {
-  const geo = new THREE.BufferGeometry();
-  const pos = new Float32Array(count * 3);
-  const vel = new Float32Array(count * 3);
-  const col = new Float32Array(count * 3);
-  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  const mat = new THREE.PointsMaterial({ size, vertexColors: true, transparent: true });
-  const object = new THREE.Points(geo, mat);
+  const geo = new THREE.BoxGeometry(size * 0.7, size * 0.15, size * 0.5);
+  const mat = new THREE.MeshBasicMaterial({ transparent: true });
+  const object = new THREE.InstancedMesh(geo, mat, count);
   object.frustumCulled = false;
   object.visible = false;
+  const pos = new Float32Array(count * 3);
+  const vel = new Float32Array(count * 3);
+  const spin = new Float32Array(count);
   let life = 0;
   let floor = 0;
   const c = new THREE.Color();
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const axis = new THREE.Vector3(1, 1, 0).normalize();
+  const one = new THREE.Vector3(1, 1, 1);
   return {
     object,
     fire(at: THREE.Vector3, power = 1) {
@@ -137,10 +143,10 @@ export function burst(count = 80, colours = CONFETTI_COLOURS, size = 0.13) {
         const a = Math.random() * Math.PI * 2;
         const s = (1 + Math.random() * 2.5) * power;
         vel.set([Math.cos(a) * s, (3 + Math.random() * 3.5) * power, Math.sin(a) * s], i * 3);
-        c.set(colours[i % colours.length]);
-        col.set([c.r, c.g, c.b], i * 3);
+        spin[i] = Math.random() * 12;
+        object.setColorAt(i, c.set(colours[i % colours.length]));
       }
-      geo.attributes.color.needsUpdate = true;
+      if (object.instanceColor) object.instanceColor.needsUpdate = true;
       life = 1.6;
       object.visible = true;
     },
@@ -151,8 +157,11 @@ export function burst(count = 80, colours = CONFETTI_COLOURS, size = 0.13) {
         vel[i * 3 + 1] -= 9 * dt;
         for (let k = 0; k < 3; k++) pos[i * 3 + k] += vel[i * 3 + k] * dt;
         if (pos[i * 3 + 1] < floor) pos[i * 3 + 1] = floor;
+        q.setFromAxisAngle(axis, spin[i] * (1.6 - life));
+        m.compose(new THREE.Vector3(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]), q, one);
+        object.setMatrixAt(i, m);
       }
-      geo.attributes.position.needsUpdate = true;
+      object.instanceMatrix.needsUpdate = true;
       mat.opacity = Math.min(1, life * 2);
       if (life <= 0) object.visible = false;
     },

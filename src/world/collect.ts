@@ -110,7 +110,7 @@ export interface Collect {
 
 export async function buildCollect(
   scene: THREE.Scene,
-  opts: { toast(title: string, body: string): void; snapshot(): string; onChange(): void },
+  opts: { toast(title: string, body: string): void; snapshot(): Promise<string>; onChange(): void },
 ): Promise<Collect> {
   let saved: Saved = { birds: [], cards: {}, jobs: [] };
   try {
@@ -199,7 +199,7 @@ export async function buildCollect(
         const taken = view.id in saved.cards;
         (stand.children[2] as THREE.Mesh).visible = !taken;
         stand.children[2].position.y = 2.1 + Math.sin(elapsed * 2.5 + view.x) * 0.06;
-        if (!taken && !pendingCard && Math.hypot(view.x - player.x, view.z - player.z) < 2.2) {
+        if (!taken && !pendingCard && !(view.id in saved.cards) && Math.hypot(view.x - player.x, view.z - player.z) < 2.2) {
           pendingCard = view;
           cardDelay = 0.15;
         }
@@ -207,10 +207,14 @@ export async function buildCollect(
       if (pendingCard) {
         cardDelay -= dt;
         if (cardDelay <= 0) {
-          saved.cards[pendingCard.id] = opts.snapshot();
-          save();
-          opts.toast('Postcard added', pendingCard.name);
+          const card = pendingCard;
           pendingCard = null;
+          saved.cards[card.id] = '';
+          void opts.snapshot().then((img) => {
+            saved.cards[card.id] = img;
+            save();
+            opts.toast('Postcard added', card.name);
+          });
         }
       }
 

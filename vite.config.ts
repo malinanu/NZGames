@@ -13,5 +13,8 @@ export default defineConfig({
       },
     },
   },
+  // One copy of three.js: plain 'three' imports (ours and the addons') get the WebGPU build,
+  // which re-exports the whole core API.
+  resolve: { alias: [{ find: /^three$/, replacement: 'three/webgpu' }] },
   server: { host: true },
 });

@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { MeshBasicNodeMaterial } from 'three/webgpu';
+import { color, float, fract, mix, positionGeometry, sin, smoothstep, step, uniform } from 'three/tsl';
 import { hashString, mulberry32, nzDateLabel } from '../../shared/rng';
 import { SEA_LEVEL, waterline } from '../../world/terrain';
 import { best, disposeTree, frame, helper, mesh, pointer, v3 } from '../kit';
@@ -32,41 +34,33 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
   const seaY = SEA_LEVEL - worldAnchor.y + 0.2;
 
   // -- Surf: our own patch of sea showing sandbars, breaking waves and rips -------------------
-  const uniforms = { uTime: { value: 0 }, uRips: { value: new THREE.Vector4(0, 0, 0, 0) }, uShow: { value: 0 } };
-  const surf = new THREE.Mesh(
-    new THREE.PlaneGeometry(HALF_BEACH * 2 + 20, 34, 1, 1),
-    new THREE.ShaderMaterial({
-      uniforms,
-      transparent: true,
-      depthWrite: false,
-      vertexShader: 'varying vec2 vP; void main(){ vP = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-      fragmentShader: /* glsl */ `
-        uniform float uTime; uniform vec4 uRips; uniform float uShow; varying vec2 vP;
-        float rip(float x, float c, float w) { return w <= 0.0 ? 0.0 : 1.0 - smoothstep(w * 0.35, w * 0.6, abs(x - c)); }
-        void main() {
-          float x = vP.x;
-          float dist = (vP.y + 17.0);             // 0 at the shore, 34 m out to sea
-          float r = max(rip(x, uRips.x, uRips.y), rip(x, uRips.z, uRips.w));
-          // Rows of breaking waves rolling in over the sandbar. Rips break the rows: no foam,
-          // and the water there looks darker and deceptively flat.
-          float wave = fract(dist * 0.14 + uTime * 0.22 + sin(x * 0.15) * 0.15);
-          float foam = smoothstep(0.86, 0.98, wave) * smoothstep(3.0, 7.0, dist) * (1.0 - smoothstep(26.0, 33.0, dist));
-          foam += (1.0 - smoothstep(0.0, 1.6, dist)) * 0.9;
-          foam *= (1.0 - r * 0.92);
-          vec3 shallow = vec3(0.30, 0.80, 0.78);
-          vec3 deep = vec3(0.07, 0.43, 0.60);
-          vec3 col = mix(shallow, deep, smoothstep(2.0, 20.0, dist));
-          col = mix(col, vec3(0.07, 0.34, 0.42), r * smoothstep(1.0, 6.0, dist));
-          // A rip carries sand and foam scraps dist to sea: faint streaks moving offshore.
-          float streak = smoothstep(0.92, 1.0, fract(dist * 0.35 - uTime * 0.6 + x * 0.4)) * r * 0.25;
-          col = mix(col, vec3(0.62, 0.66, 0.55), streak);
-          col = mix(col, vec3(1.0), clamp(foam, 0.0, 1.0) * 0.9);
-          // After the round, outline the rips so players can learn the look.
-          col = mix(col, vec3(1.0, 0.35, 0.25), uShow * r * (0.35 + 0.25 * sin(uTime * 6.0)));
-          gl_FragColor = vec4(col, smoothstep(0.0, 0.6, dist));
-        }`,
-    }),
-  );
+  // TSL: compiles to WGSL on WebGPU and GLSL on the WebGL fallback.
+  const uniforms = { uTime: uniform(0), uRips: uniform(new THREE.Vector4(0, 0, 0, 0)), uShow: uniform(0) };
+  const surfMat = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false });
+  {
+    const x = positionGeometry.x;
+    const dist = positionGeometry.y.add(17); // 0 at the shore, 34 m out to sea
+    const rip = (c: typeof x, w: typeof x) => float(1).sub(smoothstep(w.mul(0.35), w.mul(0.6), x.sub(c).abs())).mul(step(float(0.001), w));
+    const R = uniforms.uRips;
+    const r = rip(R.x, R.y).max(rip(R.z, R.w));
+    const t = uniforms.uTime;
+    // Rows of breaking waves over the sandbar. A rip breaks the rows: no foam, darker, flat-looking.
+    const wave = fract(dist.mul(0.14).add(t.mul(0.22)).add(sin(x.mul(0.15)).mul(0.15)));
+    const foam = smoothstep(float(0.86), float(0.98), wave).mul(smoothstep(float(3), float(7), dist)).mul(float(1).sub(smoothstep(float(26), float(33), dist)))
+      .add(float(1).sub(smoothstep(float(0), float(1.6), dist)).mul(0.9))
+      .mul(float(1).sub(r.mul(0.92)));
+    let col = mix(color('#4dccc7'), color('#126e99'), smoothstep(float(2), float(20), dist));
+    col = mix(col, color('#12576b'), r.mul(smoothstep(float(1), float(6), dist)));
+    // A rip carries sand and foam scraps out to sea: faint streaks moving offshore.
+    const streak = smoothstep(float(0.92), float(1), fract(dist.mul(0.35).sub(t.mul(0.6)).add(x.mul(0.4)))).mul(r).mul(0.25);
+    col = mix(col, color('#9ea88c'), streak);
+    col = mix(col, color('#ffffff'), foam.clamp(0, 1).mul(0.9));
+    // After the round, outline the rips so players learn the look.
+    col = mix(col, color('#ff5940'), uniforms.uShow.mul(r).mul(sin(t.mul(6)).mul(0.25).add(0.35)));
+    surfMat.colorNode = col;
+    surfMat.opacityNode = smoothstep(float(0), float(0.6), dist);
+  }
+  const surf = new THREE.Mesh(new THREE.PlaneGeometry(HALF_BEACH * 2 + 20, 34, 1, 1), surfMat);
   surf.rotation.x = -Math.PI / 2;
   surf.position.set(0, seaY, shoreZ - 17 + 0.6);
   surf.renderOrder = 3;

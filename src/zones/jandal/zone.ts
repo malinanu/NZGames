@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { spawnProp, type Prop } from '../../shared/assets';
 import { nzDateLabel } from '../../shared/rng';
+import { burst } from '../kit';
 import type { GameZone, ZoneContext } from '../types';
 import { buildCourse, FLICKS_PER_HOLE, HOLES_PER_COURSE, type Hole } from './course';
 import { buildChillyBin, buildJandal, JANDAL } from './models';
@@ -23,8 +24,6 @@ const OUT_OF_BOUNDS = 13;
 const IMPACT_KEEP_LINEAR = 0.3;
 const IMPACT_KEEP_SPIN = 0.25;
 const PREVIEW_DOTS = 12;
-const CONFETTI = 90;
-const CONFETTI_COLOURS = ['#ff4fa3', '#9be22d', '#27c4f5', '#ffd23f', '#8b5cf6', '#ff7a1a'];
 
 type Phase = 'idle' | 'aim' | 'flight' | 'between' | 'done';
 type Pose = 'sole-down' | 'strap-up' | 'edge';
@@ -136,31 +135,8 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
   previewDots.visible = false;
   previewDots.frustumCulled = false;
   root.add(previewDots);
-  const confettiGeo = new THREE.BufferGeometry();
-  const confettiPos = new Float32Array(CONFETTI * 3);
-  const confettiVel = new Float32Array(CONFETTI * 3);
-  const confettiCol = new Float32Array(CONFETTI * 3);
-  confettiGeo.setAttribute('position', new THREE.BufferAttribute(confettiPos, 3));
-  confettiGeo.setAttribute('color', new THREE.BufferAttribute(confettiCol, 3));
-  const confetti = new THREE.Points(confettiGeo, new THREE.PointsMaterial({ size: 0.13, vertexColors: true, transparent: true }));
-  confetti.visible = false;
-  confetti.frustumCulled = false;
-  root.add(confetti);
-  let confettiLife = 0;
-  const burstConfetti = (at: THREE.Vector3) => {
-    const colour = new THREE.Color();
-    for (let i = 0; i < CONFETTI; i++) {
-      confettiPos.set([at.x, at.y + 0.1, at.z], i * 3);
-      const a = Math.random() * Math.PI * 2;
-      const s = 1 + Math.random() * 2.5;
-      confettiVel.set([Math.cos(a) * s, 3 + Math.random() * 3.5, Math.sin(a) * s], i * 3);
-      colour.set(CONFETTI_COLOURS[i % CONFETTI_COLOURS.length]);
-      confettiCol.set([colour.r, colour.g, colour.b], i * 3);
-    }
-    confettiGeo.attributes.color.needsUpdate = true;
-    confettiLife = 1.6;
-    confetti.visible = true;
-  };
+  const confetti = burst(90);
+  root.add(confetti.object);
 
   // -- State -----------------------------------------------------------------
   let holeIndex = 0;
@@ -294,7 +270,7 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
     const used = FLICKS_PER_HOLE - flicksLeft;
     if (onTarget && pose !== 'strap-up') {
       const legend = pose === 'edge';
-      burstConfetti(jandalMesh.position);
+      confetti.fire(jandalMesh.position.clone());
       ctx.player.character.play('Cheering');
       ui.toast(legend ? 'On its edge?! Legend!' : used === 1 ? 'First flick! Choice!' : 'Sweet as!', 'good');
       finishHole(legend ? 'legend' : used === 1 ? 'ace' : 'landed', FLICKS_PER_HOLE + 1 - used + (legend ? 2 : 0));
@@ -448,23 +424,13 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
         t.marker.getObjectByName('ring')!.scale.setScalar(1 + Math.sin(elapsed * 4) * 0.06);
         t.marker.getObjectByName('arrow')!.position.y = 0.95 + Math.sin(elapsed * 3) * 0.12;
       }
-      if (confettiLife > 0) {
-        confettiLife -= dt;
-        for (let i = 0; i < CONFETTI; i++) {
-          confettiVel[i * 3 + 1] -= 9 * dt;
-          for (let k = 0; k < 3; k++) confettiPos[i * 3 + k] += confettiVel[i * 3 + k] * dt;
-          if (confettiPos[i * 3 + 1] < 0.02) confettiPos[i * 3 + 1] = 0.02;
-        }
-        confettiGeo.attributes.position.needsUpdate = true;
-        (confetti.material as THREE.PointsMaterial).opacity = Math.min(1, confettiLife * 2);
-        if (confettiLife <= 0) confetti.visible = false;
-      }
+      confetti.update(dt);
     },
     dispose() {
       zone.stop();
       root.traverse((o) => {
         const m = o as THREE.Mesh;
-        if (m.isMesh || (o as THREE.Points).isPoints) m.geometry?.dispose();
+        if (m.isMesh) m.geometry?.dispose();
       });
     },
     debug: {

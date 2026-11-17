@@ -48,15 +48,20 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
 
   // -- The sky --------------------------------------------------------------------------
   const R = 90;
-  const starGeo = new THREE.BufferGeometry();
-  const pts: number[] = [];
-  for (let i = 0; i < 900; i++) {
-    const az = Math.random() * Math.PI * 2;
-    const alt = Math.asin(Math.random() * 0.98 + 0.02);
-    pts.push(Math.sin(az) * Math.cos(alt) * R, Math.sin(alt) * R, -Math.cos(az) * Math.cos(alt) * R);
+  // Stars: small instanced discs on a dome (GL points have no size under WebGPU).
+  const starMat = new THREE.MeshBasicMaterial({ color: '#dfe8ff', transparent: true, opacity: 0, fog: false, depthWrite: false });
+  const sky = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.22, 0), starMat, 900);
+  {
+    const m4 = new THREE.Matrix4();
+    for (let i = 0; i < 900; i++) {
+      const az = Math.random() * Math.PI * 2;
+      const alt = Math.asin(Math.random() * 0.98 + 0.02);
+      const s = 0.5 + Math.random() * 1.2;
+      m4.makeScale(s, s, s).setPosition(Math.sin(az) * Math.cos(alt) * R, Math.sin(alt) * R, -Math.cos(az) * Math.cos(alt) * R);
+      sky.setMatrixAt(i, m4);
+    }
+    sky.frustumCulled = false;
   }
-  starGeo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-  const sky = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: '#dfe8ff', size: 1.6, sizeAttenuation: false, transparent: true, opacity: 0, fog: false, depthWrite: false }));
   root.add(sky);
   const guides = Array.from({ length: 6 }, () => {
     const s = new THREE.Mesh(new THREE.SphereGeometry(0.75, 10, 8), new THREE.MeshBasicMaterial({ color: '#fff3c4', fog: false, transparent: true }));
@@ -164,7 +169,7 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       guides.forEach((g) => (g.visible = false));
     },
     update(dt, elapsed) {
-      (sky.material as THREE.PointsMaterial).opacity += ((phase === 'sail' ? 1 : 0) - (sky.material as THREE.PointsMaterial).opacity) * Math.min(1, dt * 2);
+      starMat.opacity += ((phase === 'sail' ? 1 : 0) - starMat.opacity) * Math.min(1, dt * 2);
       waka.position.y = seaY + Math.sin(elapsed * 1.3) * 0.06;
       waka.rotation.z = Math.sin(elapsed * 0.9) * 0.03;
       if (phase !== 'sail') return;
@@ -190,7 +195,7 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       waka.rotation.y = -deg(heading);
       // Sit in the stern looking past the bow at the horizon.
       const back = v3(Math.sin(deg(heading)), 0, -Math.cos(deg(heading)));
-      frame(ctx, waka.position.clone().addScaledVector(back, -5.5).add(v3(0, 2.2, 0)), waka.position.clone().addScaledVector(back, 30).add(v3(0, 8, 0)), 5);
+      frame(ctx, waka.position.clone().addScaledVector(back, -6.5).add(v3(0, 4.6, 0)), waka.position.clone().addScaledVector(back, 30).add(v3(0, 9, 0)), 5);
       hud();
       if (t >= VOYAGE) finish();
     },

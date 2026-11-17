@@ -9,6 +9,14 @@ import {
   addPad, addPlatform, biomeAt, fbm, groundHeight, HEADLAND, inStream, landHeight, SEA_LEVEL, STREAM_Z0, STREAM_Z1, streamHalf, streamSurface, streamX, waterline, WORLD,
 } from './terrain';
 import { ZONES } from './zones';
+import { buildWorldData, type WorldData } from './dataTexture';
+import { buildFlowers, buildGrass, glowBulb, terrainMaterial } from './ground';
+import { buildSea, buildStream, Buoyancy } from './water';
+import { quality } from '../engine/quality';
+import { world } from '../engine/tsl';
+
+/** Things that float (filled while building; the buoyancy system picks them up). */
+const floaters: THREE.Object3D[] = [];
 
 /**
  * The town of Pōhutukawa Bay, district by district. Layout (north is -Z):
@@ -30,8 +38,8 @@ export interface WorldMap {
 }
 
 export const STREET_Z = 20;
-const STREET_X0 = -60;
-const STREET_X1 = 116;
+export const STREET_X0 = -60;
+export const STREET_X1 = 116;
 /** KayKit road tile at 8 m: asphalt surface and footpath heights above the tile base. */
 const ASPHALT = 0.28;
 const KERB = 0.4;
@@ -64,7 +72,7 @@ const TRACKS: Track[] = [
   { kind: 'gravel', width: 1.8, points: [[-10, 60], [60, 62]] },
 ];
 
-function trackDistance(x: number, z: number): { d: number; track: Track | null } {
+export function trackDistance(x: number, z: number): { d: number; track: Track | null } {
   let best = Infinity;
   let which: Track | null = null;
   for (const t of TRACKS) {
@@ -94,7 +102,7 @@ const CLEAR: [number, number, number, number][] = [
   [-150, -106, -134, -104], // woolshed yard
 ];
 
-function clearOf(x: number, z: number, margin = 0): boolean {
+export function clearOf(x: number, z: number, margin = 0): boolean {
   for (const [a, b, c, d] of CLEAR) if (x > a - margin && x < b + margin && z > c - margin && z < d + margin) return false;
   for (const zone of ZONES) if (Math.hypot(x - zone.x, z - zone.z) < (zone.clear ?? 7) + margin) return false;
   if (trackDistance(x, z).d < 1.2 + margin) return false;
@@ -128,11 +136,15 @@ export async function buildWorld(scene: THREE.Scene): Promise<WorldMap> {
   const footBridgeY = Math.max(landHeight(119, -100), landHeight(136, -100)) + 0.5;
   addPlatform(118, 137, -101.4, -98.6, footBridgeY, 3);
 
-  scene.add(buildTerrain());
-  const sea = buildSea();
-  scene.add(sea.mesh);
-  const stream = buildStream();
-  scene.add(stream.mesh);
+  // The world as data (paths, grass, water depth, sand, height) for the TSL shaders.
+  const data = buildWorldData();
+  scene.add(buildTerrain(data));
+  scene.add(buildSea(data, quality.preset));
+  scene.add(buildStream());
+  scene.add(buildGrass(data, quality.preset));
+  scene.add(buildFlowers(data, quality.preset));
+  const buoyancy = new Buoyancy();
+  floaters.length = 0;
 
   const walks: THREE.Vector2[][] = [];
   const animated: Animated = [];
@@ -150,6 +162,7 @@ export async function buildWorld(scene: THREE.Scene): Promise<WorldMap> {
   scene.add(buildClouds(animated));
 
   await b.done();
+  for (const f of floaters) buoyancy.add(f, { draft: 0.35, tether: 2.5 });
   return {
     colliders,
     seats: b.seats,
@@ -161,8 +174,7 @@ export async function buildWorld(scene: THREE.Scene): Promise<WorldMap> {
     ],
     audit: () => b.audit(),
     update: (dt, elapsed) => {
-      sea.uniforms.uTime.value = elapsed;
-      stream.uniforms.uTime.value = elapsed;
+      buoyancy.update(dt, elapsed, world.focal.value as THREE.Vector3);
       for (const fn of animated) fn(dt, elapsed);
     },
   };
@@ -196,6 +208,7 @@ function township(b: Builder, walks: THREE.Vector2[][]): void {
     lights.push({ x, z: STREET_Z - 3.6, rot: Math.PI / 2 }, { x: x + 7, z: STREET_Z + 3.6, rot: -Math.PI / 2 });
   }
   b.many('city/streetlight', { height: 4.2 }, lights, 0.2);
+  for (const l of lights) b.add(glowBulb('#ffe9a3', 0.16), l.x + Math.cos(l.rot ?? 0) * 0.85, l.z - Math.sin(l.rot ?? 0) * 0.85, 0, 3.95);
   b.many('city/firehydrant', { height: 0.7 }, [{ x: -22, z: STREET_Z - 3.5 }, { x: 72, z: STREET_Z + 3.5 }], 0.25);
   b.many('city/trash_A', { height: 0.5 }, [{ x: 8, z: STREET_Z + 3.5 }, { x: 96, z: STREET_Z - 3.5 }], 0.3);
   // The street is two lanes, so cars park on the verge by the foreshore path instead.
@@ -209,7 +222,10 @@ function township(b: Builder, walks: THREE.Vector2[][]): void {
     const a = (i / presents.length) * Math.PI * 2;
     b.put(`holiday/${name}`, 30 + Math.sin(a) * 3.3, -12 + Math.cos(a) * 3.3, { width: 0.8 + (i % 3) * 0.2, rot: a * 2, solid: 0.45 });
   });
-  for (const [x, z] of [[14, 6], [46, 6], [14, -28], [46, -28]]) b.put('holiday/lantern', x, z, { height: 3.2, solid: 0.35 });
+  for (const [x, z] of [[14, 6], [46, 6], [14, -28], [46, -28]]) {
+    b.put('holiday/lantern', x, z, { height: 3.2, solid: 0.35 });
+    b.add(glowBulb('#ffd27a', 0.22), x, z, 0, 2.05);
+  }
   const benches: [number, number, number][] = [[22, -4, Math.PI / 2], [38, -4, -Math.PI / 2], [24, 8, Math.PI], [36, 8, Math.PI], [30, -24, 0], [-30, STREET_Z + 3.3, Math.PI], [84, STREET_Z - 3.3, 0]];
   for (const [x, z, yaw] of benches) bench(b, x, z, yaw);
   b.put('holiday/train_locomotive', 42, -20, { width: 2.4, rot: 0.5, solid: 1 });
@@ -365,7 +381,8 @@ function wharf(b: Builder, J: { x: number; z0: number; z1: number; y: number }):
   for (const [dx, z, yaw] of [[1.9, 143, Math.PI / 2], [-1.9, 134, -Math.PI / 2], [0, J.z1 - 0.7, 0]] as [number, number, number][]) b.seat('fish', J.x + dx, z, yaw);
   for (const [dx, z, c] of [[5.5, 126, '#27c4f5'], [-6, 140, '#d7263d'], [7, 147, '#ffd23f']] as [number, number, string][]) {
     const boat = P.dinghy(c);
-    boat.position.set(J.x + dx, SEA_LEVEL - 0.28, z);
+    boat.position.set(J.x + dx, SEA_LEVEL + 0.2, z);
+    floaters.push(boat);
     boat.rotation.y = rand(0, 6.28);
     b.scene.add(boat);
   }
@@ -541,7 +558,7 @@ function vegetation(b: Builder): void {
   b.many('forest/Bush_1_A_Color1', { height: 1 }, bushes.filter((_, i) => i % 2 === 0));
   b.many('forest/Bush_2_B_Color1', { height: 1.1 }, bushes.filter((_, i) => i % 2 === 1));
   b.many('forest/Rock_1_A_Color1', { height: 1 }, rocks, 0.45);
-  b.many('forest/Grass_1_A_Color1', { height: 0.35 }, grass);
+  void grass; // the GPU grass (ground.ts) replaces the scattered tufts
   flax(b, flaxClumps);
 }
 
@@ -549,7 +566,7 @@ function vegetation(b: Builder): void {
 // Ground, water, sky dressing
 // ---------------------------------------------------------------------------
 
-function buildTerrain(): THREE.Mesh {
+function buildTerrain(data: WorldData): THREE.Mesh {
   const pad = 70;
   const w = WORLD.maxX - WORLD.minX + pad * 2;
   const d = WORLD.maxZ - WORLD.minZ + pad * 2;
@@ -597,104 +614,10 @@ function buildTerrain(): THREE.Mesh {
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colours, 3));
   geo.computeVertexNormals();
-  const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }));
+  const mesh = new THREE.Mesh(geo, terrainMaterial(data));
   mesh.receiveShadow = true;
   mesh.name = 'terrain';
   return mesh;
-}
-
-function buildSea(): { mesh: THREE.Mesh; uniforms: { uTime: { value: number } } } {
-  const uniforms = { uTime: { value: 0 } };
-  const geo = new THREE.PlaneGeometry(900, 520, 160, 90);
-  geo.rotateX(-Math.PI / 2);
-  geo.translate(0, SEA_LEVEL, 300);
-  const mat = new THREE.ShaderMaterial({
-    uniforms: { ...uniforms, uDeep: { value: new THREE.Color('#0e6f9a') }, uShallow: { value: new THREE.Color('#45cfc6') }, uFog: { value: new THREE.Color('#cdeeff') } },
-    transparent: true,
-    vertexShader: /* glsl */ `
-      uniform float uTime;
-      varying vec3 vWorld;
-      varying float vWave;
-      void main() {
-        vec3 p = position;
-        float w = sin(p.x * 0.16 + uTime * 1.0) * 0.1 + sin(p.z * 0.31 - uTime * 1.5) * 0.08;
-        p.y += w;
-        vWave = w;
-        vec4 world = modelMatrix * vec4(p, 1.0);
-        vWorld = world.xyz;
-        gl_Position = projectionMatrix * viewMatrix * world;
-      }`,
-    fragmentShader: /* glsl */ `
-      uniform float uTime;
-      uniform vec3 uDeep;
-      uniform vec3 uShallow;
-      uniform vec3 uFog;
-      varying vec3 vWorld;
-      varying float vWave;
-      void main() {
-        // Distance out from the curved waterline (same formula as terrain.ts).
-        float d = vWorld.z - (112.0 + vWorld.x * vWorld.x * 0.0008);
-        // Only the sea itself: never show through land that dips below sea level (the estuary).
-        if (d < -2.5) discard;
-        vec3 col = mix(uShallow, uDeep, smoothstep(0.0, 34.0, d));
-        float roll = fract(d * 0.1 - uTime * 0.16 + sin(vWorld.x * 0.07) * 0.35);
-        float foam = smoothstep(0.9, 1.0, roll) * (1.0 - smoothstep(3.0, 26.0, d));
-        foam += 1.0 - smoothstep(0.0, 1.8, d + sin(vWorld.x * 0.3 + uTime) * 0.6);
-        col = mix(col, vec3(1.0), clamp(foam, 0.0, 1.0) * 0.85);
-        col += vWave * 0.3;
-        col = mix(col, uFog, smoothstep(90.0, 260.0, d));
-        gl_FragColor = vec4(col, mix(0.82, 1.0, smoothstep(0.0, 5.0, d)));
-      }`,
-  });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.renderOrder = 1;
-  return { mesh, uniforms };
-}
-
-/** A ribbon of water following the stream bed down to the estuary. */
-function buildStream(): { mesh: THREE.Mesh; uniforms: { uTime: { value: number } } } {
-  const uniforms = { uTime: { value: 0 } };
-  const z0 = STREAM_Z0;
-  const z1 = STREAM_Z1;
-  const n = (z1 - z0) * 2;
-  const verts: number[] = [];
-  const uvs: number[] = [];
-  const idx: number[] = [];
-  for (let i = 0; i <= n; i++) {
-    const z = z0 + ((z1 - z0) * i) / n;
-    const x = streamX(z);
-    // A little wider than the water so the edges tuck under the banks.
-    const half = streamHalf(z) + 0.8;
-    const y = streamSurface(z);
-    verts.push(x - half, y, z, x + half, y, z);
-    uvs.push(0, i / 12, 1, i / 12);
-    if (i < n) idx.push(i * 2, i * 2 + 2, i * 2 + 1, i * 2 + 1, i * 2 + 2, i * 2 + 3);
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
-  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-  geo.setIndex(idx);
-  const mat = new THREE.ShaderMaterial({
-    uniforms,
-    transparent: true,
-    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader: /* glsl */ `
-      uniform float uTime; varying vec2 vUv;
-      void main() {
-        float centre = 1.0 - abs(vUv.x - 0.5) * 2.0;
-        float ripple = sin((vUv.y - uTime * 0.4) * 9.0 + sin(vUv.x * 7.0 + vUv.y * 0.5) * 1.6) * 0.5 + 0.5;
-        // Deeper and darker in the middle, clearer and lighter at the edges.
-        vec3 col = mix(vec3(0.36, 0.62, 0.58), vec3(0.16, 0.42, 0.50), smoothstep(0.0, 0.7, centre));
-        col += ripple * 0.06;
-        // A thin line of foam where the water laps the bank.
-        float lap = smoothstep(0.08, 0.0, abs(centre - 0.12 - sin(vUv.y * 3.0 + uTime) * 0.02));
-        col = mix(col, vec3(0.92, 0.96, 0.95), lap * 0.6);
-        gl_FragColor = vec4(col, 0.9);
-      }`,
-  });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.renderOrder = 1;
-  return { mesh, uniforms };
 }
 
 /** Crimson flower clusters for the pōhutukawa canopies (they are December-red). */

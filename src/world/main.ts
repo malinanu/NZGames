@@ -17,6 +17,9 @@ import { PlayerController } from '../character/controller';
 import { brand } from '../shared/brand';
 import { nzDateKey } from '../shared/rng';
 import { Ambience } from './audio';
+import { DayCycle } from './sky';
+import { installFog, skyMaterial, world as gpu } from '../engine/tsl';
+import { quality } from '../engine/quality';
 import type { Place } from './build';
 import { buildCollect, type Collect } from './collect';
 import { buildLife, type Life } from './life';
@@ -41,45 +44,30 @@ const ambience = new Ambience();
 if (params.has('debug')) (window as unknown as { __debug?: unknown }).__debug = { scene: app.scene, camera: app.camera, THREE };
 
 // ---------------------------------------------------------------------------
-// Sky and light. The sun sits to the north (-Z), as it does at midday in Aotearoa, and
-// drifts from a bright morning to a long golden evening and back.
+// Sky and light: a TSL sky dome, one sun on a circular path, Day/Dusk/Night/Dawn presets
+// (see sky.ts) and fog measured from the player rather than the camera (see engine/tsl.ts).
 // ---------------------------------------------------------------------------
-const C = (hex: string) => new THREE.Color(hex);
-const MIDDAY = { top: C('#4fb0ff'), horizon: C('#d6f1ff'), fog: C('#cdeeff'), sun: C('#fff4dc') };
-const GOLDEN = { top: C('#6fa8f0'), horizon: C('#ffd9b0'), fog: C('#ffe2c4'), sun: C('#ffc98a') };
-const NIGHT = { top: C('#050b26'), horizon: C('#1d2b5c'), fog: C('#14204a') };
-const skyUniforms = { uTop: { value: MIDDAY.top.clone() }, uHorizon: { value: MIDDAY.horizon.clone() } };
-const sky = new THREE.Mesh(
-  new THREE.SphereGeometry(560, 24, 12),
-  new THREE.ShaderMaterial({
-    uniforms: skyUniforms,
-    side: THREE.BackSide,
-    depthWrite: false,
-    fog: false,
-    vertexShader: 'varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-    fragmentShader: 'uniform vec3 uTop; uniform vec3 uHorizon; varying vec3 vDir; void main(){ float t = smoothstep(-0.05, 0.5, vDir.y); gl_FragColor = vec4(mix(uHorizon, uTop, t), 1.0); }',
-  }),
-);
+const sky = new THREE.Mesh(new THREE.SphereGeometry(560, 24, 12), skyMaterial());
 sky.renderOrder = -1;
 scene.add(sky);
-scene.fog = new THREE.Fog(MIDDAY.fog.clone(), 90, 330);
+installFog(scene);
 
 const hemi = new THREE.HemisphereLight('#eaf7ff', '#6e9a52', 1.25);
 scene.add(hemi);
 const sun = new THREE.DirectionalLight('#fff1d6', 2.4);
 const SHADOW_HALF = 38;
-const SHADOW_MAP = 2048;
+const SHADOW_MAP = quality.preset.shadowMap;
 sun.castShadow = true;
 sun.shadow.mapSize.set(SHADOW_MAP, SHADOW_MAP);
-Object.assign(sun.shadow.camera, { left: -SHADOW_HALF, right: SHADOW_HALF, top: SHADOW_HALF, bottom: -SHADOW_HALF, near: 1, far: 160 });
+Object.assign(sun.shadow.camera, { left: -SHADOW_HALF, right: SHADOW_HALF, top: SHADOW_HALF, bottom: -SHADOW_HALF, near: 1, far: 180 });
 sun.shadow.bias = -0.0006;
 sun.shadow.normalBias = 0.03;
 scene.add(sun, sun.target);
-const sunDir = new THREE.Vector3();
-
-let nightGoal = 0;
-let night = 0;
-const setNight = (amount: number) => (nightGoal = amount);
+// ?time=0..1 jumps the cycle (0 midday, 0.42 dusk, 0.6 night, 0.8 dawn) for checks and screenshots.
+const startTime = Number(params.get('time'));
+const day = new DayCycle(sun, hemi, Number.isFinite(startTime) && params.has('time') ? startTime : 0.08);
+if (params.has('time')) day.length = 1e9;
+const setNight = (amount: number) => (day.forcedNight = amount > 0 ? amount : null);
 
 /** Soft blob under each character so they read as standing on the ground even in shade. */
 function contactShadow(): THREE.Mesh {
@@ -162,6 +150,7 @@ try {
 const SELECT_AT = new THREE.Vector3(30, 0, 5);
 
 async function boot(): Promise<void> {
+  await app.init();
   app.start();
   setProgress(0.08);
   const worldPromise = buildWorld(scene).then((w) => {
@@ -461,17 +450,8 @@ const texel = (SHADOW_HALF * 2) / SHADOW_MAP;
 app.onUpdate((dt, elapsed) => {
   world?.update(dt, elapsed);
 
-  // Time of day: a slow swing between midday and golden hour (about 8 minutes a cycle).
-  const gold = THREE.MathUtils.smoothstep(Math.sin(elapsed / 76 - 1.2), 0.1, 0.95);
-  night += (nightGoal - night) * (1 - Math.exp(-dt * 3));
-  skyUniforms.uTop.value.lerpColors(MIDDAY.top, GOLDEN.top, gold).lerp(NIGHT.top, night);
-  skyUniforms.uHorizon.value.lerpColors(MIDDAY.horizon, GOLDEN.horizon, gold).lerp(NIGHT.horizon, night);
-  (scene.fog as THREE.Fog).color.lerpColors(MIDDAY.fog, GOLDEN.fog, gold).lerp(NIGHT.fog, night);
-  sun.color.lerpColors(MIDDAY.sun, GOLDEN.sun, gold);
-  hemi.intensity = THREE.MathUtils.lerp(1.25, 0.45, night) - gold * 0.2;
-  sun.intensity = THREE.MathUtils.lerp(2.4, 0.18, night);
-  // The sun stays in the northern sky and sinks towards the north-west in the evening.
-  sunDir.set(-0.35 - gold * 0.75, 1.0 - gold * 0.52, -0.6).normalize();
+  gpu.time.value = elapsed;
+  day.update(dt);
 
   if (mode === 'select') {
     rig.update(dt, SELECT_AT);
@@ -499,7 +479,7 @@ app.onUpdate((dt, elapsed) => {
     playerShadow.position.set(player.position.x, groundHeight(player.position.x, player.position.z) + 0.03, player.position.z);
     playerShadow.visible = mode === 'walk';
     focus.copy(mode === 'zone' ? camera.position.clone().add(camera.getWorldDirection(tmp).multiplyScalar(12)).setY(player.position.y) : player.position);
-    ambience.update(biomeAt(player.position.x, player.position.z), waterline(player.position.x) - player.position.z, night);
+    ambience.update(biomeAt(player.position.x, player.position.z), waterline(player.position.x) - player.position.z, gpu.night.value as number);
 
     placeCheck -= dt;
     if (placeCheck <= 0 && mode === 'walk') {
@@ -525,7 +505,8 @@ app.onUpdate((dt, elapsed) => {
   focus.x = Math.round(focus.x / texel) * texel;
   focus.z = Math.round(focus.z / texel) * texel;
   sun.target.position.copy(focus);
-  sun.position.copy(focus).addScaledVector(sunDir, 70);
+  sun.position.copy(focus).add(day.sunOffset);
+  (gpu.focal.value as THREE.Vector3).copy(focus);
   sky.position.copy(camera.position);
 });
 
