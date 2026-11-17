@@ -6,7 +6,7 @@ import { Colliders } from '../engine/colliders';
 import { Builder, box, cyl, type Place, type Seat } from './build';
 import * as P from './props';
 import {
-  addPad, addPlatform, biomeAt, fbm, groundHeight, HEADLAND, landHeight, SEA_LEVEL, streamSurface, streamX, waterline, WORLD,
+  addPad, addPlatform, biomeAt, fbm, groundHeight, HEADLAND, inStream, landHeight, SEA_LEVEL, STREAM_Z0, STREAM_Z1, streamHalf, streamSurface, streamX, waterline, WORLD,
 } from './terrain';
 import { ZONES } from './zones';
 
@@ -98,7 +98,7 @@ function clearOf(x: number, z: number, margin = 0): boolean {
   for (const [a, b, c, d] of CLEAR) if (x > a - margin && x < b + margin && z > c - margin && z < d + margin) return false;
   for (const zone of ZONES) if (Math.hypot(x - zone.x, z - zone.z) < (zone.id === 'trap-line' ? 15 : 7) + margin) return false;
   if (trackDistance(x, z).d < 1.2 + margin) return false;
-  if (Math.abs(x - streamX(z)) < 6 && z > -160) return false;
+  if (inStream(x, z, 5)) return false;
   return true;
 }
 
@@ -120,8 +120,11 @@ export async function buildWorld(scene: THREE.Scene): Promise<WorldMap> {
   addPlatform(STREET_X0 - 4, STREET_X1 + 4, STREET_Z + 2.48, STREET_Z + 4, KERB_TOP, 1);
   const JETTY = { x: -45, z0: waterline(-45) - 13, z1: 152, y: 0.55 };
   addPlatform(JETTY.x - 2.4, JETTY.x + 2.4, JETTY.z0, JETTY.z1 + 60, JETTY.y, 4);
-  const roadBridgeY = 0.75;
-  addPlatform(129, 152, STREET_Z - 2.2, STREET_Z + 2.2, roadBridgeY, 4);
+  // The road bridge sits level with the higher bank, so neither end is buried.
+  // The road bridge spans just the channel, level with the higher of its two banks.
+  const bridgeX = streamX(STREET_Z);
+  const roadBridgeY = Math.max(landHeight(bridgeX - 6.5, STREET_Z), landHeight(bridgeX + 6.5, STREET_Z), 0.4) + 0.2;
+  addPlatform(bridgeX - 8.5, bridgeX + 8.5, STREET_Z - 2.2, STREET_Z + 2.2, roadBridgeY, 3);
   const footBridgeY = Math.max(landHeight(119, -100), landHeight(136, -100)) + 0.5;
   addPlatform(118, 137, -101.4, -98.6, footBridgeY, 3);
 
@@ -262,9 +265,14 @@ function bachRoad(b: Builder): void {
   b.put('holiday/football', -128, -16, { width: 0.32 });
   b.put('mixedbag1/guitar_A', -152, 6.5, { height: 1.1, rot: 0.6 });
   b.put('holiday/christmas_tree', -150, -14, { height: 2.6, solid: 0.9 });
-  const flax: Placement[] = [];
-  for (const [x] of baches) for (let i = -9; i <= 9; i += 3.6) flax.push({ x: x + i + rand(-0.4, 0.4), z: -36.6, rot: rand(0, 6.28), scale: rand(0.9, 1.3) });
-  b.many('mixedbag1/flax_flower_A', { height: 1.3 }, flax);
+  const flaxes: Placement[] = [];
+  for (const [x] of baches) for (let i = -9; i <= 9; i += 3.6) flaxes.push({ x: x + i + rand(-0.4, 0.4), z: -36.6, rot: rand(0, 6.28), scale: rand(0.9, 1.3) });
+  flax(b, flaxes);
+}
+
+/** Harakeke clumps, dropped onto the ground. */
+function flax(b: Builder, places: Placement[]): void {
+  b.scene.add(P.flaxClumps(places.map((p) => ({ ...p, y: groundHeight(p.x, p.z) }))));
 }
 
 function yardFence(b: Builder, x0: number, z0: number, x1: number, z1: number): void {
@@ -459,13 +467,14 @@ function bush(b: Builder, footBridgeY: number, animated: Animated): void {
 
 function headland(b: Builder, roadBridgeY: number): void {
   b.place('headland', 'Lighthouse', HEADLAND.x, HEADLAND.z, 34);
-  b.place('estuary', 'Estuary bridge', 140, 20, 16);
-  const rb = P.deck(23, 4.4, 2.2, true);
+  b.place('estuary', 'Stream bridge', 140, 20, 16);
+  const bx = streamX(STREET_Z);
+  const rb = P.deck(15, 4.4, 4.5, true);
   rb.rotation.y = Math.PI / 2;
-  rb.position.set(140.5, roadBridgeY, STREET_Z);
+  rb.position.set(bx, roadBridgeY, STREET_Z);
   b.scene.add(rb);
-  b.colliders.box(140.5, STREET_Z - 2.3, 16, 0.3);
-  b.colliders.box(140.5, STREET_Z + 2.3, 16, 0.3);
+  b.colliders.box(bx, STREET_Z - 2.3, 13, 0.3);
+  b.colliders.box(bx, STREET_Z + 2.3, 13, 0.3);
   b.add(P.signpost('One lane', '#b3541e'), 125, STREET_Z - 4, -Math.PI / 2);
   b.add(P.signpost('Lighthouse'), 154, 25, -Math.PI / 2);
   b.add(P.lighthouse(), HEADLAND.x + 3, HEADLAND.z + 3);
@@ -509,7 +518,7 @@ function vegetation(b: Builder): void {
   const bushes: Placement[] = [];
   const rocks: Placement[] = [];
   const grass: Placement[] = [];
-  const flax: Placement[] = [];
+  const flaxClumps: Placement[] = [];
   for (let i = 0; i < 520; i++) {
     const x = rand(WORLD.minX, WORLD.maxX);
     const z = rand(WORLD.minZ, 96);
@@ -526,18 +535,19 @@ function vegetation(b: Builder): void {
     grass.push({ x, z, rot: rand(0, 6.28), scale: rand(0.7, biome === 'farm' ? 1.9 : 1.4) });
   }
   // Harakeke along the stream banks and the dunes.
-  for (let z = -150; z < 100; z += rand(3, 6)) {
-    const x = streamX(z) + (rng() < 0.5 ? -1 : 1) * rand(4.5, 7);
-    if (Math.abs(z - STREET_Z) < 5 || Math.abs(z + 100) < 4) continue;
-    flax.push({ x, z, rot: rand(0, 6.28), scale: rand(1, 1.6) });
+  // Harakeke on the stream banks, just above the water.
+  for (let z = STREAM_Z0 + 4; z < STREAM_Z1 - 6; z += rand(3, 6)) {
+    const side = rng() < 0.5 ? -1 : 1;
+    const x = streamX(z) + side * (streamHalf(z) + rand(1.4, 3.2));
+    if (Math.abs(z - STREET_Z) < 5 || Math.abs(z + 100) < 4 || groundHeight(x, z) < streamSurface(z) + 0.1) continue;
+    flaxClumps.push({ x, z, rot: rand(0, 6.28), scale: rand(0.85, 1.25) });
   }
-  for (let x = -190; x < 118; x += rand(4, 9)) flax.push({ x, z: waterline(x) - 26 + rand(-2, 2), rot: rand(0, 6.28), scale: rand(0.9, 1.4) });
+  for (let x = -190; x < 118; x += rand(4, 9)) flaxClumps.push({ x, z: waterline(x) - 26 + rand(-2, 2), rot: rand(0, 6.28), scale: rand(0.8, 1.15) });
   b.many('forest/Bush_1_A_Color1', { height: 1 }, bushes.filter((_, i) => i % 2 === 0));
   b.many('forest/Bush_2_B_Color1', { height: 1.1 }, bushes.filter((_, i) => i % 2 === 1));
   b.many('forest/Rock_1_A_Color1', { height: 1 }, rocks, 0.45);
   b.many('forest/Grass_1_A_Color1', { height: 0.35 }, grass);
-  b.many('mixedbag1/flax_flower_A', { height: 1.4 }, flax.filter((_, i) => i % 2 === 0));
-  b.many('mixedbag1/flax_flower_B', { height: 1.4 }, flax.filter((_, i) => i % 2 === 1));
+  flax(b, flaxClumps);
 }
 
 // ---------------------------------------------------------------------------
@@ -561,6 +571,7 @@ function buildTerrain(): THREE.Mesh {
   const bushFloor = C('#4f8a40');
   const sand = C('#f1dcae');
   const wetSand = C('#cdb382');
+  const streamBed = C('#6f7a52');
   const gravel = C('#cfc4ae');
   const dirt = C('#b9925f');
   const rock = C('#8d9197');
@@ -584,7 +595,7 @@ function buildTerrain(): THREE.Mesh {
     const shield = Math.exp(-((x - HEADLAND.x) ** 2 + (z - HEADLAND.z) ** 2) / (36 * 36));
     c.lerp(sand, THREE.MathUtils.smoothstep(z, wl - 30, wl - 25) * (1 - shield));
     c.lerp(wetSand, THREE.MathUtils.smoothstep(z, wl - 6, wl + 2));
-    if (h < SEA_LEVEL - 0.2 && biome !== 'sea') c.lerp(wetSand, 0.7); // stream bed
+    if (inStream(x, z, 0.3)) c.lerp(streamBed, 0.85); // under the stream: hidden by the water
     const { d: td, track } = trackDistance(x, z);
     if (track) c.lerp(track.kind === 'gravel' ? gravel : dirt, (1 - THREE.MathUtils.smoothstep(td, -0.5, 0.9)) * 0.92);
     colours.set([c.r, c.g, c.b], i * 3);
@@ -628,6 +639,8 @@ function buildSea(): { mesh: THREE.Mesh; uniforms: { uTime: { value: number } } 
       void main() {
         // Distance out from the curved waterline (same formula as terrain.ts).
         float d = vWorld.z - (112.0 + vWorld.x * vWorld.x * 0.0008);
+        // Only the sea itself: never show through land that dips below sea level (the estuary).
+        if (d < -2.5) discard;
         vec3 col = mix(uShallow, uDeep, smoothstep(0.0, 34.0, d));
         float roll = fract(d * 0.1 - uTime * 0.16 + sin(vWorld.x * 0.07) * 0.35);
         float foam = smoothstep(0.9, 1.0, roll) * (1.0 - smoothstep(3.0, 26.0, d));
@@ -646,19 +659,20 @@ function buildSea(): { mesh: THREE.Mesh; uniforms: { uTime: { value: number } } 
 /** A ribbon of water following the stream bed down to the estuary. */
 function buildStream(): { mesh: THREE.Mesh; uniforms: { uTime: { value: number } } } {
   const uniforms = { uTime: { value: 0 } };
-  const z0 = -150;
-  const z1 = waterline(132) + 4;
-  const n = 150;
+  const z0 = STREAM_Z0;
+  const z1 = STREAM_Z1;
+  const n = (z1 - z0) * 2;
   const verts: number[] = [];
   const uvs: number[] = [];
   const idx: number[] = [];
   for (let i = 0; i <= n; i++) {
     const z = z0 + ((z1 - z0) * i) / n;
     const x = streamX(z);
-    const half = 2.6 + THREE.MathUtils.smoothstep(z, 40, 110) * 5;
+    // A little wider than the water so the edges tuck under the banks.
+    const half = streamHalf(z) + 0.8;
     const y = streamSurface(z);
     verts.push(x - half, y, z, x + half, y, z);
-    uvs.push(0, i / 6, 1, i / 6);
+    uvs.push(0, i / 12, 1, i / 12);
     if (i < n) idx.push(i * 2, i * 2 + 2, i * 2 + 1, i * 2 + 1, i * 2 + 2, i * 2 + 3);
   }
   const geo = new THREE.BufferGeometry();
@@ -672,14 +686,20 @@ function buildStream(): { mesh: THREE.Mesh; uniforms: { uTime: { value: number }
     fragmentShader: /* glsl */ `
       uniform float uTime; varying vec2 vUv;
       void main() {
-        float edge = smoothstep(0.0, 0.22, vUv.x) * smoothstep(1.0, 0.78, vUv.x);
-        float ripple = sin((vUv.y - uTime * 0.25) * 22.0 + sin(vUv.x * 9.0) * 1.5) * 0.5 + 0.5;
-        vec3 col = mix(vec3(0.20, 0.62, 0.72), vec3(0.42, 0.84, 0.86), ripple * 0.5);
-        col = mix(vec3(0.95), col, smoothstep(0.0, 0.12, edge));
-        gl_FragColor = vec4(col, 0.86 * smoothstep(0.0, 0.08, edge));
+        float centre = 1.0 - abs(vUv.x - 0.5) * 2.0;
+        float ripple = sin((vUv.y - uTime * 0.4) * 9.0 + sin(vUv.x * 7.0 + vUv.y * 0.5) * 1.6) * 0.5 + 0.5;
+        // Deeper and darker in the middle, clearer and lighter at the edges.
+        vec3 col = mix(vec3(0.36, 0.62, 0.58), vec3(0.16, 0.42, 0.50), smoothstep(0.0, 0.7, centre));
+        col += ripple * 0.06;
+        // A thin line of foam where the water laps the bank.
+        float lap = smoothstep(0.08, 0.0, abs(centre - 0.12 - sin(vUv.y * 3.0 + uTime) * 0.02));
+        col = mix(col, vec3(0.92, 0.96, 0.95), lap * 0.6);
+        gl_FragColor = vec4(col, 0.9);
       }`,
   });
-  return { mesh: new THREE.Mesh(geo, mat), uniforms };
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.renderOrder = 1;
+  return { mesh, uniforms };
 }
 
 /** Crimson flower clusters for the pōhutukawa canopies (they are December-red). */

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { box, cyl, group, paint } from './build';
 
 /** Procedural props for things the asset packs don't have. All stand on y = 0, in metres. */
@@ -254,4 +255,69 @@ export function woolshed(): THREE.Group {
   gable.position.y = 4.95;
   g.add(gable);
   return g;
+}
+
+/**
+ * Harakeke (New Zealand flax): a fan of long, stiff, dark green blades, some clumps with a
+ * tall flower stalk. One merged geometry, instanced for every clump. Height is about 1.6 m.
+ */
+let flaxGeo: { leaves: THREE.BufferGeometry; stalk: THREE.BufferGeometry } | null = null;
+function flaxGeometry(): { leaves: THREE.BufferGeometry; stalk: THREE.BufferGeometry } {
+  if (flaxGeo) return flaxGeo;
+  const blades: THREE.BufferGeometry[] = [];
+  const count = 22;
+  for (let i = 0; i < count; i++) {
+    const len = 1.3 + ((i * 37) % 11) / 14;
+    const blade = new THREE.PlaneGeometry(0.22, len, 1, 6);
+    const pos = blade.attributes.position;
+    for (let k = 0; k < pos.count; k++) {
+      const y = pos.getY(k) + len / 2; // 0 at the base
+      const t = y / len;
+      // Taper to a point and arch outwards towards the tip.
+      pos.setX(k, pos.getX(k) * (1 - t * 0.8));
+      pos.setY(k, y * (1 - t * 0.12));
+      pos.setZ(k, t * t * len * 0.45);
+    }
+    blade.computeVertexNormals();
+    const lean = 0.12 + ((i * 53) % 7) / 16;
+    blade.rotateX(-lean);
+    blade.rotateY((i / count) * Math.PI * 2 + (i % 3) * 0.2);
+    blades.push(blade);
+  }
+  const leaves = mergeGeometries(blades)!;
+  const stalk = mergeGeometries([
+    new THREE.CylinderGeometry(0.025, 0.04, 2.6, 5).translate(0, 1.3, 0),
+    new THREE.CylinderGeometry(0.07, 0.05, 0.4, 6).translate(0.07, 2.4, 0),
+    new THREE.CylinderGeometry(0.06, 0.04, 0.32, 6).translate(-0.06, 2.1, 0),
+  ])!;
+  flaxGeo = { leaves, stalk };
+  return flaxGeo;
+}
+
+export function flaxClumps(places: { x: number; y: number; z: number; rot?: number; scale?: number }[]): THREE.Group {
+  const { leaves, stalk } = flaxGeometry();
+  const leafMat = new THREE.MeshLambertMaterial({ color: '#3f6a34', side: THREE.DoubleSide });
+  const stalkMat = new THREE.MeshLambertMaterial({ color: '#6b3a2a' });
+  const flowering = places.filter((_, i) => i % 3 === 0);
+  const a = new THREE.InstancedMesh(leaves, leafMat, places.length);
+  const b = new THREE.InstancedMesh(stalk, stalkMat, Math.max(1, flowering.length));
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const up = new THREE.Vector3(0, 1, 0);
+  const put = (mesh: THREE.InstancedMesh, list: typeof places) =>
+    list.forEach((p, i) => {
+      const sc = p.scale ?? 1;
+      q.setFromAxisAngle(up, p.rot ?? 0);
+      m.compose(new THREE.Vector3(p.x, p.y - 0.03, p.z), q, new THREE.Vector3(sc, sc, sc));
+      mesh.setMatrixAt(i, m);
+    });
+  put(a, places);
+  put(b, flowering);
+  b.count = flowering.length;
+  for (const mesh of [a, b]) {
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.computeBoundingSphere();
+  }
+  return group(a, b);
 }
