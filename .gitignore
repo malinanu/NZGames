@@ -3,3 +3,6 @@ dist
 public/models
 *.log
 .DS_Store
+
+# Agent worktrees (temporary checkouts)
+.claude/worktrees/
