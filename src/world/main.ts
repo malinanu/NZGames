@@ -129,10 +129,10 @@ help.className = 'walk-help';
 help.hidden = true;
 // One line per kind of device; CSS shows the one matching html[data-input].
 help.innerHTML = `
-  <span data-for="touch">Drag from your character to walk · tap them to jump · two fingers to look and zoom</span>
-  <span data-for="keyboard">WASD to walk · drag or Q/R to look · wheel to zoom · Space to jump · E to play</span>
-  <span data-for="xbox">Left stick to walk · right stick to look · A to jump · B to play · ☰ for the map</span>
-  <span data-for="playstation">Left stick to walk · right stick to look · ✕ to jump · ○ to play · Options for the map</span>`;
+  <span data-for="touch">Drag from your character to walk · tap to jump · two fingers to look</span>
+  <span data-for="keyboard">WASD walk · drag to look · Space jump · E play</span>
+  <span data-for="xbox">Stick walk · A jump · B play · ☰ map</span>
+  <span data-for="playstation">Stick walk · ✕ jump · ○ play · Options map</span>`;
 document.body.appendChild(help);
 const mapEl = document.createElement('div');
 mapEl.className = 'map-sheet';
@@ -361,6 +361,12 @@ async function startWalking(cast: Character[], index: number): Promise<void> {
     },
     anchor: () => input.anchor?.(),
     zoom: () => +rig.zoom.toFixed(2),
+    /** Fixed camera for checks (back to following with follow()). */
+    shot: (px: number, py: number, pz: number, tx: number, ty: number, tz: number) => {
+      rig.shot(new THREE.Vector3(px, py, pz), new THREE.Vector3(tx, ty, tz), 50);
+      rig.snap();
+    },
+    follow: () => rig.follow(),
     input: () => ({ device: input.device, move: input.move.toArray().map((v) => +v.toFixed(2)), run: input.run, ring: { ...input.ring } }),
     enter: (id: string) => zones.enterById(id),
     leave: () => zones.leave(),

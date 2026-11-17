@@ -148,7 +148,7 @@ export function lighthouseLamp(): { lamp: THREE.Material; beam: THREE.Group } {
   const m = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
   m.colorNode = color('#fff1c2');
   // Bright at the lamp, fading out along the beam; nothing by day.
-  m.opacityNode = float(1).sub(uv().y).pow(1.6).mul(0.3).mul(world.night);
+  m.opacityNode = float(1).sub(uv().y).pow(1.8).mul(0.2).mul(world.night);
   const beam = new THREE.Group();
   for (const dir of [1, -1]) {
     const geo = new THREE.CylinderGeometry(4.5, 0.45, 46, 18, 1, true).translate(0, 23, 0).rotateZ((-Math.PI / 2) * dir);
