@@ -9,7 +9,8 @@ const canonical = new Map<string, THREE.Material>();
 function materialFor(m: THREE.Material): THREE.Material {
   if ((m as { isNodeMaterial?: boolean }).isNodeMaterial) return m;
   const p = m as THREE.MeshLambertMaterial;
-  const key = [m.type, p.color?.getHexString(), p.emissive?.getHexString(), p.map?.uuid ?? '', m.side, p.vertexColors ? 1 : 0, p.flatShading ? 1 : 0, m.alphaTest, p.fog ? 1 : 0].join('|');
+  const std = m as THREE.MeshStandardMaterial;
+  const key = [m.type, p.color?.getHexString(), p.emissive?.getHexString(), std.emissiveIntensity ?? '', std.metalness ?? '', std.roughness ?? '', m.opacity, p.map?.uuid ?? '', m.side, p.vertexColors ? 1 : 0, p.flatShading ? 1 : 0, m.alphaTest, p.fog ? 1 : 0].join('|');
   let c = canonical.get(key);
   if (!c) canonical.set(key, (c = m));
   return c;

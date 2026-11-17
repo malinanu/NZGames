@@ -195,7 +195,8 @@ export async function buildWorld(scene: THREE.Scene): Promise<WorldMap> {
   ball.userData.dynamic = true;
   // The grounding audit inspects the original props, so run it before they're baked together.
   const problems = import.meta.env.DEV ? b.audit() : [];
-  const batched = batchStatic(scene.children.slice(builtFrom));
+  // ?nobatch keeps every prop as its own mesh (for comparing renderers and debugging).
+  const batched = new URLSearchParams(location.search).has('nobatch') ? { before: 0, after: 0 } : batchStatic(scene.children.slice(builtFrom));
   if (import.meta.env.DEV) console.info(`[batch] ${batched.before} static meshes -> ${batched.after}`);
   return {
     colliders,
