@@ -1,6 +1,10 @@
 import { brand } from '../shared/brand';
 import { icon } from './icons';
 
+/** Key caps for the keyboard, Xbox and PlayStation (only the one in use shows). */
+const glyphs = (keyboard: string, xbox: string, playstation: string) =>
+  `<span class="glyph" data-for="keyboard">${keyboard}</span><span class="glyph" data-for="xbox">${xbox}</span><span class="glyph" data-for="playstation">${playstation}</span>`;
+
 export interface EndCard {
   title: string;
   /** Big score line, e.g. "15 pts". */
@@ -31,6 +35,7 @@ export class ZoneUi {
   private onLeave: () => void = () => {};
   private onReplay: () => void = () => {};
   private zoneTitle = '';
+  private endAt = 0;
 
   constructor() {
     this.el = document.createElement('div');
@@ -54,8 +59,8 @@ export class ZoneUi {
           <p class="end-note"></p>
           <div class="end-actions">
             <button class="btn btn-primary" data-share>${icon('share')}<span>Share result</span></button>
-            <button class="btn" data-replay>${icon('replay')}<span>Play again</span></button>
-            <button class="btn btn-ghost" data-leave>${icon('walk')}<span>Back to the world</span></button>
+            <button class="btn" data-replay>${icon('replay')}<span>Play again</span>${glyphs('R', 'A', '✕')}</button>
+            <button class="btn btn-ghost" data-leave>${icon('walk')}<span>Back to the world</span>${glyphs('Esc', 'B', '○')}</button>
           </div>
           <p class="presented">Presented by ${brand.presenter} ${brand.campaign}</p>
         </div>
@@ -114,9 +119,29 @@ export class ZoneUi {
     return this.sheetEl;
   }
 
-  hint(text: string | null): void {
-    this.hintEl.hidden = !text;
-    if (text) this.hintEl.textContent = text;
+  /**
+   * The line of help under the title. HTML, so games can show per-device lines with
+   * `<span data-for="touch|keyboard|xbox|playstation">` (see `controls()` in zones/kit.ts).
+   * Only ever pass the game's own strings here, never anything a player typed.
+   */
+  hint(html: string | null): void {
+    this.hintEl.hidden = !html;
+    if (html) this.hintEl.innerHTML = html;
+  }
+
+  /** True while the end card is up. */
+  get ending(): boolean {
+    return !this.el.hidden && !this.endEl.hidden;
+  }
+
+  /** Seconds the end card has been showing. */
+  get endAge(): number {
+    return (performance.now() - this.endAt) / 1000;
+  }
+
+  /** The end card's Play again (gamepad A / Cross). */
+  replay(): void {
+    if (this.ending) this.onReplay();
   }
 
   toast(text: string, tone: 'good' | 'bad' | 'info' = 'info', ms = 1600): void {
@@ -153,6 +178,7 @@ export class ZoneUi {
       }
     };
     this.endEl.hidden = false;
+    this.endAt = performance.now();
     share.focus({ preventScroll: true });
   }
 

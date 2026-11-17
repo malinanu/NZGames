@@ -9,10 +9,15 @@ import type { ZoneContext } from './types';
 
 export const v3 = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 
-/** Points the camera from `from` at `to`, both in zone space. */
-export function frame(ctx: ZoneContext, from: THREE.Vector3, to: THREE.Vector3, sharpness = 3.2): void {
+/**
+ * Points the camera from `from` at `to`, both in zone space. Shots are framed on a 420x800
+ * portrait phone; with `fit` (the default) the rig backs the camera off along (from - to) on
+ * screens that would crop that framing (`CameraRig.shotScale`). Pass `fit = false` when the
+ * distance already comes from `fitDistance`, which accounts for the screen itself.
+ */
+export function frame(ctx: ZoneContext, from: THREE.Vector3, to: THREE.Vector3, sharpness = 3.2, fit = true): void {
   ctx.root.updateMatrixWorld(true);
-  ctx.rig.shot(ctx.root.localToWorld(from.clone()), ctx.root.localToWorld(to.clone()), sharpness);
+  ctx.rig.shot(ctx.root.localToWorld(from.clone()), ctx.root.localToWorld(to.clone()), sharpness, fit);
 }
 
 /** Distance needed for a portrait/landscape-safe framing of something `w` wide and `h` tall. */
@@ -215,4 +220,124 @@ export class Countdown {
 /** Frees GPU memory for everything under `root` (geometries only; materials are shared). */
 export function disposeTree(root: THREE.Object3D): void {
   root.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
+}
+
+// -- Keyboard and gamepad helpers -------------------------------------------------------------
+
+const PAD_GLYPHS: Record<'xbox' | 'playstation', Record<string, string>> = {
+  xbox: { A: 'A', B: 'B', X: 'X', Y: 'Y', LB: 'LB', RB: 'RB', LT: 'LT', RT: 'RT', Start: '☰' },
+  playstation: { A: '✕', B: '○', X: '□', Y: '△', LB: 'L1', RB: 'R1', LT: 'L2', RT: 'R2', Start: 'Options' },
+};
+
+/**
+ * An input-aware hint: one line per device, shown by `html[data-input]`. In `keyboard` and
+ * `pad`, `{Name}` becomes a key cap: pad names are A, B, X, Y, LB, RB, LT, RT and Start (shown
+ * as Xbox or PlayStation glyphs); keyboard names are printed as given ({Space}, {Enter}, {Q}).
+ */
+export function controls(lines: { touch: string; keyboard: string; pad: string }): string {
+  const cap = (s: string, table?: Record<string, string>) => s.replace(/\{([^}]+)\}/g, (_, k: string) => `<b class="key">${table?.[k] ?? k}</b>`);
+  return [
+    `<span data-for="touch">${lines.touch}</span>`,
+    `<span data-for="keyboard">${cap(lines.keyboard)}</span>`,
+    `<span data-for="xbox">${cap(lines.pad, PAD_GLYPHS.xbox)}</span>`,
+    `<span data-for="playstation">${cap(lines.pad, PAD_GLYPHS.playstation)}</span>`,
+  ].join('');
+}
+
+/** True when the player is on keyboard or gamepad (so cursors and highlights should show). */
+export const usingButtons = (ctx: ZoneContext) => ctx.input.device() !== 'touch';
+
+/**
+ * Spatial navigation for pick-and-place games: from point `from`, the nearest of `points` in
+ * screen direction `dir` (x right, y up). Returns the index, or `current` if nothing lies that
+ * way. Points are in zone space and are projected through the camera, so "up" is what the
+ * player sees as up.
+ */
+export function step(ctx: ZoneContext, points: THREE.Vector3[], current: number, dir: { x: number; y: number }): number {
+  if (!dir.x && !dir.y) return current;
+  const at = points.map((p) => toScreen(ctx, p));
+  const from = at[current] ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+  const len = Math.hypot(dir.x, dir.y);
+  const dx = dir.x / len;
+  const dy = -dir.y / len;
+  let bestI = current;
+  let bestScore = Infinity;
+  at.forEach((p, i) => {
+    if (i === current) return;
+    const vx = p.x - from.x;
+    const vy = p.y - from.y;
+    const along = vx * dx + vy * dy;
+    if (along < 8) return;
+    const across = Math.abs(vx * dy - vy * dx);
+    if (across > along * 1.8) return;
+    const score = along + across * 2;
+    if (score < bestScore) {
+      bestScore = score;
+      bestI = i;
+    }
+  });
+  return bestI;
+}
+
+/** A pulsing ring that marks the keyboard/gamepad cursor on the ground. Add `.object` to the zone. */
+export function cursorRing(radius = 0.5, colour = '#ffd23f') {
+  const object = new THREE.Mesh(
+    new THREE.TorusGeometry(radius, Math.max(0.025, radius * 0.07), 8, 40),
+    new THREE.MeshBasicMaterial({ color: colour, depthTest: false, transparent: true }),
+  );
+  object.rotation.x = Math.PI / 2;
+  object.renderOrder = 10;
+  object.visible = false;
+  return {
+    object,
+    /** Shows the ring at `at` (zone space) if `show`, pulsing with time. */
+    update(show: boolean, at: THREE.Vector3 | null, elapsed: number) {
+      object.visible = show && !!at;
+      if (!object.visible || !at) return;
+      object.position.copy(at);
+      object.scale.setScalar(1 + Math.sin(elapsed * 6) * 0.08);
+    },
+  };
+}
+
+/**
+ * Marks button `index` in a list of sheet buttons as the keyboard/gamepad cursor (outlined
+ * only when not on touch, see world.css) and scrolls it into view.
+ */
+export function markCursor(buttons: Iterable<Element>, index: number): void {
+  let i = 0;
+  for (const b of buttons) {
+    const on = i++ === index;
+    b.classList.toggle('pad-cursor', on);
+    if (on) b.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }
+}
+
+/**
+ * Aim and power for flick and lob games on keyboard or gamepad: the stick (or arrows) moves
+ * the aim left and right and the power up and down; both stay where they are left, so the
+ * player can line up and then fire with A / Space.
+ */
+export function padAim(opts: { yawMax: number; yawSpeed?: number; powerSpeed?: number }) {
+  const state = {
+    power: 0.5,
+    yaw: 0,
+    /** Set once the player has touched the aim this turn (show the preview arc). */
+    active: false,
+    reset(power = 0.5, yaw = 0) {
+      state.power = power;
+      state.yaw = yaw;
+      state.active = false;
+    },
+    /** Applies the stick for one frame. Returns true if the aim changed. */
+    update(ctx: ZoneContext, dt: number): boolean {
+      const s = ctx.input.stick();
+      if (!s.x && !s.y) return false;
+      state.active = true;
+      state.yaw = THREE.MathUtils.clamp(state.yaw + s.x * dt * (opts.yawSpeed ?? 0.7), -opts.yawMax, opts.yawMax);
+      state.power = THREE.MathUtils.clamp(state.power + s.y * dt * (opts.powerSpeed ?? 0.45), 0, 1);
+      return true;
+    },
+  };
+  return state;
 }

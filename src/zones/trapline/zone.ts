@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { spawnProp } from '../../shared/assets';
 import { hashString, mulberry32, nzDateLabel } from '../../shared/rng';
 import { icon } from '../../world/icons';
+import { controls, cursorRing, step, usingButtons } from '../kit';
 import type { GameZone, ZoneContext } from '../types';
 import { buildBird, buildBlossom, buildHex, buildNest, buildPredator, buildTrap, buildTunnel, SPECIES_COLOUR, SPECIES_NAME } from './models';
 import { key, NIGHTS, Sim, SPECIES, type NightReport, type Species, type Tile, type Tool } from './sim';
@@ -350,6 +351,40 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
   };
   const onResize = () => phase !== 'idle' && frameBoard();
 
+  // Keyboard/gamepad: a cursor ring moves between tiles.
+  const ring = cursorRing(0.78);
+  board.add(ring.object);
+  let cursor = '';
+  const tileList = () => [...sim.tiles.values()];
+  const startCursor = () => {
+    const list = tileList().filter((t) => sim.canPlace(t));
+    list.sort((a, b) => tilePos(a).length() - tilePos(b).length());
+    cursor = list[0] ? key(list[0].q, list[0].r) : '';
+  };
+  const padInput = () => {
+    const input = ctx.input;
+    if (phase === 'evening') {
+      const nav = input.nav();
+      if (nav.x || nav.y) {
+        const list = tileList();
+        const i = list.findIndex((t) => key(t.q, t.r) === cursor);
+        const j = step(ctx, list.map((t) => tilePos(t).setY(BOARD_Y)), i, nav);
+        cursor = key(list[j].q, list[j].r);
+      }
+      if (input.confirm()) {
+        const tile = sim.tiles.get(cursor);
+        if (tile) place(tile);
+      }
+      if (input.pressed('west') || input.pressed('lb') || input.pressed('rb') || input.keyPressed('KeyT', 'KeyQ', 'KeyE')) {
+        tool = tool === 'trap' ? 'tunnel' : 'trap';
+        refreshHud();
+      }
+      if (input.pressed('north') || input.pressed('start') || input.keyPressed('Enter', 'KeyN')) startNight();
+    } else if (phase === 'morning') {
+      if (input.confirm() || input.pressed('north') || input.keyPressed('Enter')) sim.finished ? showEnd() : startEvening();
+    }
+  };
+
   const projected = new THREE.Vector3();
   const reset = () => {
     for (const mesh of gear.values()) board.remove(mesh);
@@ -374,7 +409,13 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       window.addEventListener('resize', onResize);
       ctx.player.place(new THREE.Vector3(-3.5, 0, 7.6), Math.PI);
       frameBoard();
-      ui.hint('Tap a tile to set a trap. Predators come over the farm fence and up the stream. Tunnels show whose prints passed.');
+      startCursor();
+      const lore = 'Predators come over the farm fence and up the stream. Tunnels show whose prints passed.';
+      ui.hint(controls({
+        touch: `Tap a tile to set a trap. ${lore}`,
+        keyboard: `Arrows pick a tile, {Space} sets gear, {T} swaps trap and tunnel, {Enter} starts the night. ${lore}`,
+        pad: `Left stick picks a tile, {A} sets gear, {X} swaps trap and tunnel, {Y} starts the night. ${lore}`,
+      }));
       startEvening();
     },
     stop() {
@@ -387,6 +428,9 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       reset();
     },
     update(dt, elapsed) {
+      padInput();
+      const at = sim.tiles.get(cursor);
+      ring.update(phase === 'evening' && usingButtons(ctx), at ? tilePos(at).setY(0.12) : null, elapsed);
       if (phase === 'night') updateNight(dt);
       for (const mesh of gear.values()) {
         mesh.userData.pop = Math.min(1, (mesh.userData.pop as number) + dt * 6);
@@ -404,7 +448,7 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       root.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
     },
     debug: {
-      state: () => ({ phase, night: sim.night, birds: sim.birds, traps: [...sim.traps], tunnels: [...sim.tunnels], left: { trap: sim.remaining('trap'), tunnel: sim.remaining('tunnel') } }),
+      state: () => ({ phase, cursor, tool, night: sim.night, birds: sim.birds, traps: [...sim.traps], tunnels: [...sim.tunnels], left: { trap: sim.remaining('trap'), tunnel: sim.remaining('tunnel') } }),
       tiles: () => [...sim.tiles.values()].map((t) => ({ ...t, canPlace: sim.canPlace(t), nearNest: sim.neighbours(t).some((n) => n.nest) })),
       screen: (q: number, r: number) => {
         const p = toWorld(tilePos({ q, r })).project(ctx.camera);

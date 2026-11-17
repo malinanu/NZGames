@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { spawnProp } from '../../shared/assets';
-import { best, burst, disposeTree, frame, mesh, v3 } from '../kit';
+import { best, burst, controls, disposeTree, frame, markCursor, mesh, v3 } from '../kit';
 import type { GameZone, ZoneContext } from '../types';
 
 /**
@@ -124,10 +124,62 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
     } else if (step === 'scale') {
       sheetEl.innerHTML = `
         <div class="puzzle">This recipe uses <b>4 egg whites</b> and feeds <b>8</b>. The whole whānau is coming: <b>20 people</b>. How many egg whites?</div>
-        <div class="tool-row three">${[6, 8, 10, 12].map((n) => `<button class="btn" data-n="${n}">${n}</button>`).join('')}</div>`;
+        <div class="tool-row three">${ANSWERS.map((n) => `<button class="btn" data-n="${n}">${n}</button>`).join('')}</div>`;
       sheetEl.querySelectorAll<HTMLButtonElement>('[data-n]').forEach((b) => b.addEventListener('click', () => answer(Number(b.dataset.n))));
     }
     ui.sheet(sheetEl);
+    if (step === 'scale') markCursor(sheetEl.querySelectorAll('[data-n]'), answerCursor);
+    if (step !== lastHintStep) {
+      lastHintStep = step;
+      ui.hint(HINTS[step] ?? null);
+    }
+  };
+
+  // -- Keyboard/gamepad ---------------------------------------------------------------
+  const HINTS: Partial<Record<Step, string>> = {
+    whisk: controls({ touch: 'Hold to whisk until it holds stiff peaks.', keyboard: 'Hold {Space} to whisk, {Enter} when the peaks look good.', pad: 'Hold {A} to whisk, {X} when the peaks look good.' }),
+    sugar: controls({ touch: 'Add a spoon, whisk, add the next.', keyboard: 'Hold {Space} to whisk, {Enter} adds a spoon of sugar.', pad: 'Hold {A} to whisk, {X} adds a spoon of sugar.' }),
+    bake: controls({ touch: 'Set the oven and the time, then bake.', keyboard: 'Oven {←} {→}, time {↑} {↓}, {C} cool in the oven, {Space} to bake.', pad: 'Oven left/right, time up/down, {Y} cool in the oven, {A} to bake.' }),
+    result: controls({ touch: 'Read what happened, then scale it up.', keyboard: '{Space} to scale it up.', pad: '{A} to scale it up.' }),
+    scale: controls({ touch: 'Pick the number of egg whites.', keyboard: 'Pick with {←} {→}, {Space} to answer.', pad: 'Pick with the left stick, {A} to answer.' }),
+  };
+  const ANSWERS = [6, 8, 10, 12];
+  let answerCursor = 0;
+  let lastHintStep: Step | null = null;
+  let padWhisk = false;
+  const padInput = () => {
+    const input = ctx.input;
+    const action = input.pressed('west') || input.keyPressed('Enter');
+    if (step === 'whisk' || step === 'sugar') {
+      // Only follow the button when it changes, so a finger holding the on-screen button still works.
+      const held = input.confirmHeld();
+      if (held !== padWhisk) whisking = padWhisk = held;
+      if (action) step === 'whisk' ? toSugar() : addSpoon();
+    } else if (step === 'bake') {
+      const nav = input.nav();
+      if (nav.x || nav.y) {
+        temp = THREE.MathUtils.clamp(temp + nav.x * 10, 90, 200);
+        minutes = THREE.MathUtils.clamp(minutes + nav.y * 10, 30, 150);
+        render();
+      }
+      if (input.pressed('north') || input.keyPressed('KeyC')) {
+        coolInOven = !coolInOven;
+        render();
+      }
+      if (input.confirm() || action) bake();
+    } else if (step === 'result') {
+      if (input.confirm() || action) {
+        step = 'scale';
+        render();
+      }
+    } else if (step === 'scale') {
+      const x = input.nav().x;
+      if (x) {
+        answerCursor = THREE.MathUtils.clamp(answerCursor + x, 0, ANSWERS.length - 1);
+        markCursor(sheetEl.querySelectorAll('[data-n]'), answerCursor);
+      }
+      if (input.confirm() || action) answer(ANSWERS[answerCursor]);
+    }
   };
 
   const toSugar = () => {
@@ -255,6 +307,9 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
     start() {
       reset();
       phase = 'play';
+      lastHintStep = null;
+      answerCursor = 0;
+      padWhisk = false;
       ctx.player.place(v3(-2.6, 0, -0.2), Math.PI / 2);
       // Stand just outside the tent, under the eaves, looking down at the bench.
       frame(ctx, v3(0, 2.25, 2.7), v3(0, 0.9, -0.95));
@@ -268,6 +323,7 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
     },
     update(dt, elapsed) {
       sparkle.update(dt);
+      if (phase === 'play' && !auto) padInput();
       sinceSpoon += whisking ? dt : 0;
       if (phase !== 'play') return;
       if (whisking && (step === 'whisk' || step === 'sugar')) {
@@ -307,7 +363,7 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       disposeTree(root);
     },
     debug: {
-      state: () => ({ phase, step, volume: +volume.toFixed(2), spoons, undissolved, score: result?.score }),
+      state: () => ({ phase, step, volume: +volume.toFixed(2), spoons, undissolved, temp, minutes, coolInOven, score: result?.score }),
       autoplay: async () => {
         auto = true;
         while (phase !== 'done') await new Promise((r) => window.setTimeout(r, 100));

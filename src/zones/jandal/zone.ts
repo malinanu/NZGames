@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { spawnProp, type Prop } from '../../shared/assets';
 import { nzDateLabel } from '../../shared/rng';
-import { burst } from '../kit';
+import { burst, controls, padAim } from '../kit';
 import type { GameZone, ZoneContext } from '../types';
 import { buildCourse, FLICKS_PER_HOLE, HOLES_PER_COURSE, type Hole } from './course';
 import { buildChillyBin, buildJandal, JANDAL } from './models';
@@ -194,7 +194,7 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
     const fwd = new THREE.Vector3(Math.sin(hole.angle), 0, -Math.cos(hole.angle));
     camGoal.pos.copy(fwd).multiplyScalar(-4.6).setY(3.3);
     camGoal.look.copy(fwd).multiplyScalar(hole.distance * 0.55).setY(0.3);
-    ctx.rig.shot(toWorld(camGoal.pos), toWorld(camGoal.look));
+    ctx.rig.shot(toWorld(camGoal.pos), toWorld(camGoal.look), 3.2, true);
   };
   const refreshHud = () => {
     ui.subtitle(`Hole ${holeIndex + 1} of ${HOLES_PER_COURSE} · ${current().hole.type.label}`);
@@ -212,6 +212,7 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
 
   const startHole = (index: number) => {
     holeIndex = index;
+    padAimer.reset();
     flicksLeft = FLICKS_PER_HOLE;
     targets.forEach((t, i) => (t.marker.visible = i === index));
     startAim();
@@ -219,6 +220,11 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
   const startAim = () => {
     phase = 'aim';
     holdJandal(current().hole.angle);
+    // Keyboard/gamepad aim carries over between flicks at the same hole, so it can be refined.
+    if (padAimer.active) {
+      aim = { power: padAimer.power, yaw: padAimer.yaw, valid: true };
+      updatePreview();
+    }
     placePlayer(current().hole.angle);
     ctx.player.character.play('Idle_A');
     setCameraForHole();
@@ -313,7 +319,9 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
     else end();
   };
 
-  // -- Input: drag back anywhere and let go -------------------------------------
+  // -- Input: drag back anywhere and let go (touch, mouse) ------------------------
+  // Keyboard/gamepad: the stick or arrows set aim and power, A / Space flicks.
+  const padAimer = padAim({ yawMax: MAX_YAW });
   let dragStart: { x: number; y: number; id: number } | null = null;
   let aim = { power: 0, yaw: 0, valid: false };
   const readAim = (x: number, y: number) => {
@@ -375,7 +383,11 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       ctx.canvas.addEventListener('pointermove', onMove);
       ctx.canvas.addEventListener('pointerup', onUp);
       ctx.canvas.addEventListener('pointercancel', onCancel);
-      ui.hint('Drag back anywhere and let go. Land it sole-down on the yellow ring.');
+      ui.hint(controls({
+        touch: 'Drag back anywhere and let go. Land it sole-down on the yellow ring.',
+        keyboard: 'Aim with {←} {→}, power with {↑} {↓}, {Space} to flick. Land it sole-down on the yellow ring.',
+        pad: 'Aim and set the power with the left stick, {A} to flick. Land it sole-down on the yellow ring.',
+      }));
       startHole(0);
     },
     stop() {
@@ -392,6 +404,13 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       syncMesh();
     },
     update(dt, elapsed) {
+      if (phase === 'aim' && !dragStart) {
+        if (padAimer.update(ctx, dt)) {
+          aim = { power: padAimer.power, yaw: padAimer.yaw, valid: true };
+          updatePreview();
+        }
+        if (ctx.input.confirm()) flick(padAimer.power, padAimer.yaw);
+      }
       if (phase === 'flight' || phase === 'between') {
         accumulator += dt;
         while (accumulator >= FIXED_DT) {
@@ -417,7 +436,7 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       if (phase === 'flight') {
         // Lean the camera towards the jandal while it's in the air.
         const look = toWorld(camGoal.look).lerp(toWorld(jandalMesh.position), 0.45);
-        ctx.rig.shot(toWorld(camGoal.pos), look, 4);
+        ctx.rig.shot(toWorld(camGoal.pos), look, 4, true);
       }
       for (const t of targets) {
         if (!t.marker.visible) continue;
@@ -434,7 +453,7 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       });
     },
     debug: {
-      state: () => ({ phase, holeIndex, flicksLeft, score, results: [...results], pose: landingPose() }),
+      state: () => ({ phase, holeIndex, flicksLeft, score, results: [...results], pose: landingPose(), aim: { power: +padAimer.power.toFixed(2), yaw: +padAimer.yaw.toFixed(2) } }),
       solvePower,
       flick,
     },

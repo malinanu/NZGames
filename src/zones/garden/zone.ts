@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { best, disposeTree, fitDistance, frame, mesh, pointer, toScreen, v3 } from '../kit';
+import { best, controls, cursorRing, disposeTree, fitDistance, frame, markCursor, mesh, pointer, step, toScreen, usingButtons, v3 } from '../kit';
 import type { GameZone, ZoneContext } from '../types';
 
 /**
@@ -92,6 +92,7 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
     sheetEl.querySelectorAll<HTMLButtonElement>('[data-s]').forEach((b) => b.addEventListener('click', () => plant(selectedPlot, SPECIES.find((s) => s.id === b.dataset.s)!)));
     sheetEl.querySelector('[data-year]')!.addEventListener('click', () => runYear());
     ui.sheet(sheetEl);
+    markCursor(sheetEl.querySelectorAll('[data-s]'), selectedPlot >= 0 ? speciesCursor : -1);
     hud();
   };
 
@@ -173,6 +174,28 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
     );
   };
 
+  // -- Keyboard/gamepad: the stick moves between beds, A picks the bed (A again plants),
+  // LB/RB (Q/E) choose the plant, Y / Enter runs the year. ----------------------------------
+  const ring = cursorRing(1.15);
+  root.add(ring.object);
+  let bedCursor = 2;
+  let speciesCursor = 0;
+  const padInput = () => {
+    const input = ctx.input;
+    const nav = input.nav();
+    if (nav.x || nav.y) bedCursor = step(ctx, PLOTS, bedCursor, nav);
+    const cycle = (input.pressed('rb') || input.keyPressed('KeyE') ? 1 : 0) - (input.pressed('lb') || input.keyPressed('KeyQ') ? 1 : 0);
+    if (cycle) {
+      speciesCursor = (speciesCursor + cycle + SPECIES.length) % SPECIES.length;
+      markCursor(sheetEl.querySelectorAll('[data-s]'), selectedPlot >= 0 ? speciesCursor : -1);
+    }
+    if (input.confirm()) {
+      if (selectedPlot === bedCursor) plant(selectedPlot, SPECIES[speciesCursor]);
+      else selectPlot(bedCursor);
+    }
+    if (input.pressed('north') || input.pressed('start') || input.keyPressed('Enter')) runYear();
+  };
+
   /** A planting that covers all twelve months within the budget (what the bot plants). */
   const SOLUTION = ['rata', 'kohekohe', 'fivefinger', 'kowhai', 'kotukutuku', 'pohutukawa'];
 
@@ -191,7 +214,7 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       phase = 'plant';
       ctx.player.place(v3(-6.6, 0, 3.4), Math.PI * 0.8);
       const d = fitDistance(ctx, 13, 7.5);
-      frame(ctx, v3(0, d * 0.75, d * 0.7), v3(0, 0, -1.2));
+      frame(ctx, v3(0, d * 0.75, d * 0.7), v3(0, 0, -1.2), 3.2, false);
       bound = pointer(ctx, {
         tap: (p) => {
           if (!p.ground) return;
@@ -207,7 +230,13 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
           if (bestI >= 0) selectPlot(bestI);
         },
       });
-      ui.hint('Each plant flowers in certain months. Pick six that cover the whole year.');
+      bedCursor = 2;
+      speciesCursor = 0;
+      ui.hint(controls({
+        touch: 'Each plant flowers in certain months. Pick six that cover the whole year.',
+        keyboard: 'Arrows pick a bed, {Space} selects it, {Q} {E} choose a plant, {Space} plants it, {Enter} runs the year. Cover all twelve months.',
+        pad: 'Left stick picks a bed, {A} selects it, {LB} {RB} choose a plant, {A} plants it, {Y} runs the year. Cover all twelve months.',
+      }));
       render();
     },
     stop() {
@@ -218,6 +247,8 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       ui.sheet(null);
     },
     update(dt, elapsed) {
+      if (phase === 'plant' && !auto) padInput();
+      ring.update(phase === 'plant' && usingButtons(ctx), PLOTS[bedCursor].clone().setY(0.16), elapsed);
       for (const m of plantMeshes) if (m && m.scale.x < 1) m.scale.setScalar(Math.min(1, m.scale.x + dt * 3));
       for (const [k, b] of birds.entries()) if (b.visible) b.position.y += Math.sin(elapsed * 8 + k) * 0.004;
       if (auto && phase === 'plant') {
@@ -245,7 +276,7 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       disposeTree(root);
     },
     debug: {
-      state: () => ({ phase, planted: planted.map((p) => p?.id ?? null), fed: covered().filter(Boolean).length, month }),
+      state: () => ({ phase, bedCursor, selectedPlot, speciesCursor, planted: planted.map((p) => p?.id ?? null), fed: covered().filter(Boolean).length, month }),
       bed: (i: number) => toScreen(ctx, PLOTS[i]),
       autoplay: async () => {
         auto = true;

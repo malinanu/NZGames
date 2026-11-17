@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { hashString, mulberry32, nzDateLabel } from '../../shared/rng';
-import { best, burst, disposeTree, frame, helper, mesh, pointer, v3 } from '../kit';
+import { best, burst, controls, disposeTree, frame, helper, mesh, padAim, pointer, v3 } from '../kit';
 import type { GameZone, ZoneContext } from '../types';
 
 /**
@@ -225,6 +225,8 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
     dots.instanceMatrix.needsUpdate = true;
   };
   let bound: ReturnType<typeof pointer> | null = null;
+  // Keyboard/gamepad: the stick or arrows set aim and power (kept between turns), A / Space lobs.
+  const padAimer = padAim({ yawMax: 0.7 });
 
   const zone: GameZone = {
     start() {
@@ -246,7 +248,12 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
           if (drag.ok) myThrow(drag.power, drag.yaw);
         },
       });
-      ui.hint('Drag back and let go to lob a water bomb. Land it in the yellow ring. Mind the wind!');
+      padAimer.reset();
+      ui.hint(controls({
+        touch: 'Drag back and let go to lob a water bomb. Land it in the yellow ring. Mind the wind!',
+        keyboard: 'Aim with {←} {→}, power with {↑} {↓}, {Space} to lob. Land it in the yellow ring. Mind the wind!',
+        pad: 'Aim and set the power with the left stick, {A} to lob. Land it in the yellow ring. Mind the wind!',
+      }));
       myTurn();
     },
     stop() {
@@ -269,6 +276,13 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
         if (balloon.position.y <= 0.12) land(phase === 'flight');
         return;
       }
+      if (phase === 'aim' && !auto) {
+        if (padAimer.update(ctx, dt) || (padAimer.active && !dots.visible)) {
+          drag = { power: padAimer.power, yaw: padAimer.yaw, ok: true };
+          preview();
+        }
+        if (ctx.input.confirm()) myThrow(padAimer.power, padAimer.yaw);
+      }
       if (phase === 'aim' && auto) {
         const s = solve(meAt, target.clone().add(v3((rng() - 0.5) * 1.2, 0, (rng() - 0.5) * 1.2)), 1);
         myThrow(s.power, s.yaw);
@@ -286,7 +300,7 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       disposeTree(root);
     },
     debug: {
-      state: () => ({ phase, throws, theirSoaked, mySoaked, wind }),
+      state: () => ({ phase, throws, theirSoaked, mySoaked, wind, aim: { power: +padAimer.power.toFixed(2), yaw: +padAimer.yaw.toFixed(2) } }),
       autoplay: async () => {
         auto = true;
         while (phase !== 'done') await new Promise((r) => window.setTimeout(r, 100));

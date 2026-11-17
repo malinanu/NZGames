@@ -6,6 +6,7 @@ const PADS: Device[] = ['keyboard', 'xbox', 'playstation'];
 import type { PlayerController } from '../character/controller';
 import type { GameZone, ZoneContext, ZoneDef } from '../zones/types';
 import { icon } from './icons';
+import { ZoneInputState } from './zoneInput';
 import { ZoneUi } from './zoneUi';
 import { ZONES } from './zones';
 import { groundHeight } from './terrain';
@@ -29,6 +30,7 @@ interface Slot {
  */
 export class ZoneManager {
   readonly ui = new ZoneUi();
+  readonly input: ZoneInputState;
   private readonly slots: Slot[] = [];
   private active: Slot | null = null;
   private near: Slot | null = null;
@@ -52,6 +54,7 @@ export class ZoneManager {
       preview: boolean;
     },
   ) {
+    this.input = new ZoneInputState(opts.input);
     this.labels = document.createElement('div');
     this.labels.className = 'world-labels';
     document.body.appendChild(this.labels);
@@ -100,6 +103,7 @@ export class ZoneManager {
       rig: opts.rig,
       canvas: opts.canvas,
       ui: this.ui,
+      input: this.input,
       root: slot.root,
       seed: opts.seed,
       daily: opts.daily,
@@ -160,6 +164,8 @@ export class ZoneManager {
       },
     });
     (window as unknown as { __zone?: unknown }).__zone = slot.zone.debug;
+    // The press that opened the game shouldn't also act inside it.
+    this.input.clear();
     slot.zone.start();
   }
 
@@ -185,6 +191,18 @@ export class ZoneManager {
   }
 
   update(dt: number, elapsed: number): void {
+    this.input.frame();
+    this.input.capture = !!this.active && !this.ui.ending;
+    if (this.active) {
+      // B / Circle or Escape: the same as the back button, mid-game or on the end card.
+      if (this.input.pressed('east') || this.input.keyPressed('Escape')) {
+        this.leave();
+      } else if (this.ui.ending && this.ui.endAge > 0.6 && (this.input.pressed('south') || this.input.keyPressed('KeyR'))) {
+        // A / Cross (or R) on the end card plays again.
+        this.ui.replay();
+        this.input.clear();
+      }
+    }
     const p = this.opts.player.position;
     let nearest: Slot | null = null;
     for (const slot of this.slots) {

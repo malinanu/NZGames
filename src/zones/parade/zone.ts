@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { spawnProp } from '../../shared/assets';
 import { hashString, mulberry32, nzDateLabel } from '../../shared/rng';
 import type { Character } from '../../character/character';
-import { best, burst, disposeTree, fitDistance, frame, helper, mesh, pointer, v3 } from '../kit';
+import { best, burst, controls, disposeTree, fitDistance, frame, helper, markCursor, mesh, pointer, v3 } from '../kit';
 import type { GameZone, ZoneContext } from '../types';
 
 /**
@@ -79,6 +79,29 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
     sheetEl.querySelectorAll<HTMLButtonElement>('[data-p]').forEach((b) => b.addEventListener('click', () => void addPart(PARTS.find((p) => p.id === b.dataset.p)!)));
     sheetEl.querySelector('[data-go]')!.addEventListener('click', () => go());
     ui.sheet(sheetEl);
+    markCursor(sheetEl.querySelectorAll('[data-p]'), partCursor);
+  };
+
+  // -- Keyboard/gamepad: left/right (or LB/RB) choose a part, A adds it, X takes the last one
+  // off, Y / Start starts the parade. --------------------------------------------------------
+  let partCursor = 0;
+  const padInput = () => {
+    const input = ctx.input;
+    const move = input.nav().x + (input.pressed('rb') ? 1 : 0) - (input.pressed('lb') ? 1 : 0);
+    if (move) {
+      partCursor = (partCursor + move + PARTS.length) % PARTS.length;
+      markCursor(sheetEl.querySelectorAll('[data-p]'), partCursor);
+    }
+    if (input.confirm()) void addPart(PARTS[partCursor]);
+    if (input.pressed('west') || input.keyPressed('Backspace', 'Delete', 'KeyX')) {
+      for (let i = slots.length - 1; i >= 0; i--) {
+        if (slots[i]) {
+          removeAt(i);
+          break;
+        }
+      }
+    }
+    if (input.pressed('north') || input.pressed('start') || input.keyPressed('Enter')) go();
   };
 
   const addPart = async (p: Part) => {
@@ -166,7 +189,13 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       phase = 'build';
       ctx.player.place(v3(-2.6, 0, 1.8), Math.PI * 0.8);
       const d = fitDistance(ctx, 5, 4);
-      frame(ctx, v3(1.5, 1.2 + d * 0.6, d * 0.8), v3(0, 0.9, 0));
+      frame(ctx, v3(1.5, 1.2 + d * 0.6, d * 0.8), v3(0, 0.9, 0), 3.2, false);
+      partCursor = 0;
+      ui.hint(controls({
+        touch: 'Tap parts to load the float. Tap a part on the float to take it off.',
+        keyboard: 'Choose with {←} {→}, {Space} adds it, {X} takes the last one off, {Enter} starts the parade.',
+        pad: 'Choose with the left stick, {A} adds it, {X} takes the last one off, {Y} starts the parade.',
+      }));
       bound = pointer(ctx, {
         planeY: DECK,
         tap: (p) => {
@@ -187,6 +216,7 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
     },
     update(dt, elapsed) {
       confetti.update(dt);
+      if (!auto && phase === 'build') padInput();
       if (auto && phase === 'build') {
         if (slots.every(Boolean)) go();
         else if (!slots.some(Boolean)) {

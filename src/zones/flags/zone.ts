@@ -3,7 +3,7 @@ import { MeshBasicNodeMaterial } from 'three/webgpu';
 import { color, float, fract, mix, positionGeometry, sin, smoothstep, step, uniform } from 'three/tsl';
 import { hashString, mulberry32, nzDateLabel } from '../../shared/rng';
 import { SEA_LEVEL, waterline } from '../../world/terrain';
-import { best, disposeTree, frame, helper, mesh, pointer, v3 } from '../kit';
+import { best, controls, disposeTree, frame, helper, mesh, pointer, v3 } from '../kit';
 import type { GameZone, ZoneContext } from '../types';
 
 /**
@@ -232,7 +232,11 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       // From high on the patrol tower, looking out over the surf.
       frame(ctx, v3(0, 21, shoreZ + 13), v3(0, 0, shoreZ - 9));
       bound = pointer(ctx, { planeY: 0, down: (p) => phase === 'place' && p.ground && setFlags(p.ground.x), move: (p) => phase === 'place' && p.ground && setFlags(p.ground.x) });
-      ui.hint('Drag anywhere to move the flags along the beach.');
+      ui.hint(controls({
+        touch: 'Drag anywhere to move the flags along the beach.',
+        keyboard: 'Move the flags with {←} {→}. {Space} opens the beach.',
+        pad: 'Move the flags with the left stick. {A} opens the beach.',
+      }));
       newBeach();
     },
     stop() {
@@ -247,6 +251,15 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
     },
     update(dt, elapsed) {
       uniforms.uTime.value = elapsed;
+      // Keyboard/gamepad: the stick slides the flags (the tower looks along -Z, so right is +X),
+      // A / Space (or Enter) presses the sheet's button.
+      if (!auto && phase === 'place') {
+        const x = ctx.input.stick().x;
+        if (x) setFlags(centre + x * 9 * dt);
+      }
+      const go = ctx.input.confirm() || ctx.input.keyPressed('Enter');
+      if (!auto && go && phase === 'place') openBeach();
+      else if (!auto && go && phase === 'review') nextRound();
       if (auto && phase === 'place') {
         setFlags(safest());
         openBeach();

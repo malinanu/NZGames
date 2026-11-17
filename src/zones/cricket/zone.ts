@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { hashString, mulberry32, nzDateLabel } from '../../shared/rng';
-import { best, burst, disposeTree, frame, helper, mesh, pointer, v3 } from '../kit';
+import { best, burst, controls, disposeTree, frame, helper, mesh, pointer, v3 } from '../kit';
 import type { GameZone, ZoneContext } from '../types';
 
 /**
@@ -187,7 +187,11 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
           swing(dy < 20 && Math.abs(dx) < 20 ? 0 : Math.atan2(dx, Math.max(dy, 10)));
         },
       });
-      ui.hint('Swipe up as the ball reaches you. Swipe left or right to aim. Fours and sixes over the rope!');
+      ui.hint(controls({
+        touch: 'Swipe up as the ball reaches you. Swipe left or right to aim. Fours and sixes over the rope!',
+        keyboard: '{Space} to swing as the ball reaches you. Hold {←} or {→} to aim. Fours and sixes over the rope!',
+        pad: '{A} to swing as the ball reaches you. Hold the left stick left or right to aim. Fours and sixes over the rope!',
+      }));
       nextBall();
     },
     stop() {
@@ -200,6 +204,8 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
     },
     update(dt) {
       spray.update(dt);
+      // Keyboard/gamepad: A / Space swings, the stick or arrows aim (full tilt ≈ the widest swipe).
+      if (phase === 'bowling' && ctx.input.confirm()) swing(ctx.input.stick().x * 1.1);
       // Bat follows the player's right hand side and sweeps when swinging.
       const pr = ctx.player.character.root;
       bat.position.copy(pr.position).add(v3(-0.32, 1.05, 0).applyAxisAngle(v3(0, 1, 0), pr.rotation.y));
@@ -270,7 +276,7 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       disposeTree(root);
     },
     debug: {
-      state: () => ({ phase, ballNo, runs, wickets }),
+      state: () => ({ phase, ballNo, runs, wickets, swung: swingTime >= 0, log: log.map((o) => o.label) }),
       /** Swings at the perfect moment for the current ball (tests). */
       perfect: (aim = 0) => {
         if (phase !== 'bowling') return false;
