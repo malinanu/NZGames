@@ -33,7 +33,9 @@ npm run build    # static site in dist/
 Needs Node 22. URL options: `?seed=anything` fixes the daily course/block, `?reveal` shows every
 predator at night in Trap Line, `?preview` shows gated zones, `?quality=low|high` overrides the
 graphics preset, `?renderer=webgl` forces the WebGL 2 backend, `?time=0..1` jumps the day/night
-cycle (0 day, 0.42 dusk, 0.6 night, 0.8 dawn) and freezes it.
+cycle (0 day, 0.42 dusk, 0.6 night, 0.8 dawn) and freezes it, `?diag` shows a rendering
+readout (renderer, fog, the material under the screen centre) with fog, shadow and tone-mapping
+toggles, and `?nobatch` turns off static batching.
 
 ## Rendering and controls
 

@@ -18,6 +18,7 @@ import { brand } from '../shared/brand';
 import { nzDateKey } from '../shared/rng';
 import { Ambience } from './audio';
 import { DayCycle } from './sky';
+import { installDiag } from './diag';
 import { installFog, skyMaterial, world as gpu } from '../engine/tsl';
 import { quality } from '../engine/quality';
 import type { Place } from './build';
@@ -88,6 +89,8 @@ scene.add(sun, sun.target);
 // ?time=0..1 jumps the cycle (0 midday, 0.42 dusk, 0.6 night, 0.8 dawn) for checks and screenshots.
 const startTime = Number(params.get('time'));
 const day = new DayCycle(sun, hemi, Number.isFinite(startTime) && params.has('time') ? startTime : 0.08);
+// ?diag: renderer, fog and centre-of-screen material readout for checking other devices.
+if (params.has('diag')) installDiag(app, sun, () => (player ? player.position : null), () => `${day.phase} ${day.progress.toFixed(3)}`);
 if (params.has('time')) day.length = 1e9;
 const setNight = (amount: number) => (day.forcedNight = amount > 0 ? amount : null);
 
