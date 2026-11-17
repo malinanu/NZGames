@@ -96,7 +96,7 @@ const CLEAR: [number, number, number, number][] = [
 
 function clearOf(x: number, z: number, margin = 0): boolean {
   for (const [a, b, c, d] of CLEAR) if (x > a - margin && x < b + margin && z > c - margin && z < d + margin) return false;
-  for (const zone of ZONES) if (Math.hypot(x - zone.x, z - zone.z) < (zone.id === 'trap-line' ? 15 : 7) + margin) return false;
+  for (const zone of ZONES) if (Math.hypot(x - zone.x, z - zone.z) < (zone.clear ?? 7) + margin) return false;
   if (trackDistance(x, z).d < 1.2 + margin) return false;
   if (inStream(x, z, 5)) return false;
   return true;
@@ -110,7 +110,7 @@ export async function buildWorld(scene: THREE.Scene): Promise<WorldMap> {
   const b = new Builder(scene, colliders);
 
   // Level the ground under games and buildings before anything reads heights.
-  for (const zone of ZONES) addPad(zone.x, zone.z, zone.id === 'trap-line' ? 14 : zone.id === 'jandal-flip' ? 15 : 5);
+  for (const zone of ZONES) if (zone.pad) addPad(zone.x, zone.z, zone.pad);
   addPad(HEADLAND.x, HEADLAND.z, 9);
   addPad(-128, -120, 16); // woolshed
   addPad(146, -147, 9); // waterfall pool
@@ -256,9 +256,6 @@ function bachRoad(b: Builder): void {
     b.put('furniture/chair_A_wood', ox + 2.4, 7 + s * 1.05, { height: 1.05, rot: s > 0 ? Math.PI : 0, lift: deckH });
     b.seat('chair', ox + 2.4, 7 + s * 0.98, s > 0 ? Math.PI : 0, deckH + 0.5);
   }
-  b.put('restaurant/stove_single', ox - 3, 6.4, { height: 1.15, lift: deckH, solid: true });
-  b.put('city/car_stationwagon', -118, 9, { width: 4.4, rot: 0.1, solid: true });
-  b.put('resource/Pallet_Wood_Covered_A', -121.5, 12, { width: 1.5, solid: 0.8 });
   b.put('resource/Wood_Log_Stack', ox + 9, -34, { width: 2, rot: 1.2, solid: 1 });
   // Neighbours' yards get a bit of life too.
   b.add(P.surfboard('#27c4f5'), -80, -9, 0.4, 0.06);
@@ -340,8 +337,6 @@ function beach(b: Builder): void {
     else b.put('holiday/football', x + 2.8, z + 1.8, { width: 0.32, ungrounded: true });
   });
   // Patrolled swimming area: red-and-yellow flags and the patrol tower.
-  b.add(P.patrolFlag(), 8, 104);
-  b.add(P.patrolFlag(), 34, 104);
   b.add(P.patrolTower(), 21, 95);
   b.colliders.box(21, 95, 2.4, 2.4);
   b.seat('stand', 23.5, 96, Math.PI);
@@ -489,7 +484,7 @@ function headland(b: Builder, roadBridgeY: number): void {
     const r = rand(14, HEADLAND.radius);
     const x = HEADLAND.x + Math.cos(a) * r;
     const z = HEADLAND.z + Math.sin(a) * r;
-    if (trackDistance(x, z).d < 2 || x > WORLD.maxX - 6 || groundHeight(x, z) < 0) continue;
+    if (trackDistance(x, z).d < 2 || x > WORLD.maxX - 6 || groundHeight(x, z) < 0 || !clearOf(x, z, 1.5)) continue;
     rocks.push({ x, z, rot: rand(0, 6.28), scale: rand(0.8, 2.4) });
   }
   b.many('forest/Rock_1_A_Color1', { height: 1 }, rocks, 0.45);

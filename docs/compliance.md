@@ -23,5 +23,9 @@ working reading of the code, not legal advice: the client's compliance team sign
 - [ ] Official logo and colours supplied (the lockup is text-only until then).
 
 ## Content reviews still needed
+- [ ] Between the Flags rip and safety content (3Rs): Surf Life Saving NZ or Water Safety NZ.
+- [ ] Pōhutukawa Garden flowering months: DOC or a native plant nursery.
+- [ ] Kōrero Kirihimete phrases (and recorded audio): a fluent te reo Māori speaker. Hidden behind `?preview` until then.
+- [ ] Star Waka: a wayfinding partner (for example a waka hourua trust) decides what is shared and how. Hidden behind `?preview` until then.
 - [ ] Trap Line predator behaviour: DOC or a community trapping group.
 - [ ] Te reo Māori names and macrons: a paid Māori reviewer.

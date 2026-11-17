@@ -37,6 +37,8 @@ const { scene, camera } = app;
 const rig = new CameraRig(camera);
 const input = new Input(app.canvas);
 const ambience = new Ambience();
+// ?debug exposes the scene for automated checks (never linked from anywhere).
+if (params.has('debug')) (window as unknown as { __debug?: unknown }).__debug = { scene: app.scene, camera: app.camera, THREE };
 
 // ---------------------------------------------------------------------------
 // Sky and light. The sun sits to the north (-Z), as it does at midday in Aotearoa, and

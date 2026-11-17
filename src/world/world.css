@@ -268,3 +268,39 @@ button { font: inherit; color: inherit; }
 .cards figure.got { opacity: 1; }
 .cards img, .cards figure > div { display: block; width: 100%; aspect-ratio: 3 / 2; border-radius: 6px; object-fit: cover; background: var(--paper-2); }
 .cards figcaption { margin-top: 4px; font-size: 11px; font-weight: 800; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- Game sheets: picking lists, two-button rows, sliders ---------- */
+.pick-row { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 10px; scrollbar-width: none; }
+.pick-row::-webkit-scrollbar { display: none; }
+.pick { flex: none; min-width: 112px; min-height: 56px; padding: 8px 12px; border: 3px solid transparent; border-radius: 14px; background: var(--paper-2); cursor: pointer; text-align: left; box-shadow: var(--clay); }
+.pick b { display: block; font-family: var(--display); font-weight: 600; font-size: 15px; line-height: 1.15; }
+.pick small { display: block; margin-top: 2px; font-size: 12px; font-weight: 700; color: var(--ink-soft); }
+.pick.on, .pick[aria-pressed='true'] { border-color: var(--ink); background: #fff; }
+.pick:disabled { opacity: .45; cursor: default; }
+.tool-row.two { grid-template-columns: 1fr 1.4fr; }
+.tool-row.three { grid-template-columns: 1fr 1fr 1fr; }
+.slider { display: grid; gap: 4px; margin: 4px 4px 10px; }
+.slider label { display: flex; justify-content: space-between; font-weight: 800; font-size: 14px; }
+.slider label span { color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.slider input { width: 100%; accent-color: var(--sea); height: 32px; }
+.puzzle { margin: 0 4px 10px; padding: 10px 12px; border-radius: 14px; background: var(--paper-2); font-size: 15px; line-height: 1.4; }
+.puzzle b { font-family: var(--display); font-weight: 600; }
+.readout { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 4px 10px; }
+.readout div { padding: 8px 10px; border-radius: 12px; background: var(--paper-2); font-size: 13px; font-weight: 700; color: var(--ink-soft); }
+.readout b { display: block; font-family: var(--display); font-weight: 600; font-size: 17px; color: var(--ink); }
+.say { margin: 0 4px 10px; padding: 12px 14px; border-radius: 16px; background: #eaf6ff; font-family: var(--display); font-weight: 600; font-size: 22px; line-height: 1.2; }
+.say small { display: block; margin-top: 4px; font-family: var(--body); font-size: 14px; font-weight: 700; color: var(--ink-soft); }
+.review-note { margin: 0 4px 10px; font-size: 12px; font-weight: 700; color: #9b2335; }
+.calendar { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; margin: 0 4px 10px; }
+.calendar span { display: grid; place-items: center; height: 34px; border-radius: 10px; background: #f0dcd2; color: #9b2335; font-weight: 800; font-size: 13px; }
+.calendar span.on { background: #e5f5e6; color: #1d6b3d; }
+.tool-row.grill { grid-template-columns: repeat(4, 1fr); margin-bottom: 10px; }
+.tool-row.four { grid-template-columns: repeat(4, 1fr); }
+.tool-row.four .btn { padding: 10px 6px; font-size: 15px; }
+.pick.slot { position: relative; min-width: 0; overflow: hidden; text-align: center; }
+.pick.slot i { position: absolute; left: 0; bottom: 0; height: 4px; width: var(--p, 0%); background: var(--sun-deep); }
+.pick.slot.burnt { background: #3b2a2a; color: #fff; }
+.pick.slot.burnt small { color: #ffd0d0; }
+.float-label.order { background: var(--paper); font-size: 13px; padding: 5px 10px 7px; overflow: hidden; }
+.float-label.order::after { content: ''; position: absolute; left: 0; bottom: 0; height: 3px; width: var(--p, 100%); background: var(--good); }
+.float-label.order.bad::after { background: var(--bad); }

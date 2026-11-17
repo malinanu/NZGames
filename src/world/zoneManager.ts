@@ -18,7 +18,7 @@ interface Slot {
   marker: THREE.Group;
   label: HTMLElement;
   zone: GameZone | null;
-  loading: boolean;
+  loading: Promise<void> | null;
 }
 
 /**
@@ -73,7 +73,7 @@ export class ZoneManager {
       label.className = `world-label ${def.load ? '' : 'is-soon'}`;
       label.innerHTML = `<b>${def.title}</b><span>${def.load ? (def.kind === 'learn' ? 'Learn & play' : 'Play') : 'Coming soon'}</span>`;
       this.labels.appendChild(label);
-      this.slots.push({ def, root, marker, label, zone: null, loading: false });
+      this.slots.push({ def, root, marker, label, zone: null, loading: null });
     }
   }
 
@@ -113,17 +113,21 @@ export class ZoneManager {
     };
   }
 
-  private async build(slot: Slot): Promise<void> {
-    if (!slot.def.load || slot.zone || slot.loading) return;
-    slot.loading = true;
-    try {
-      const mod = await slot.def.load();
-      slot.zone = await mod.createZone(this.context(slot));
-    } catch (err) {
-      console.error(`Zone ${slot.def.id} failed to load`, err);
-    } finally {
-      slot.loading = false;
-    }
+  /** Builds the zone once; callers that arrive while it is loading wait for the same load. */
+  private build(slot: Slot): Promise<void> {
+    if (!slot.def.load || slot.zone) return Promise.resolve();
+    if (slot.loading) return slot.loading;
+    slot.loading = (async () => {
+      try {
+        const mod = await slot.def.load!();
+        slot.zone = await mod.createZone(this.context(slot));
+      } catch (err) {
+        console.error(`Zone ${slot.def.id} failed to load`, err);
+      } finally {
+        slot.loading = null;
+      }
+    })();
+    return slot.loading;
   }
 
   private dispose(slot: Slot): void {
@@ -186,7 +190,9 @@ export class ZoneManager {
       const centre = Math.hypot(slot.root.position.x - p.x, slot.root.position.z - p.z);
       if (centre < BUILD_RADIUS) void this.build(slot);
       else if (centre > DISPOSE_RADIUS) this.dispose(slot);
-      slot.zone?.update(dt, elapsed);
+      // Tests can fast-forward games (the headless browser runs at a few frames a second).
+      const speed = slot === this.active ? ((window as unknown as { __zoneSpeed?: number }).__zoneSpeed ?? 1) : 1;
+      slot.zone?.update(dt * speed, elapsed);
       if (!this.active && d < PROMPT_RADIUS) nearest = slot;
       // Pulsing ring.
       const ring = slot.marker.children[0];

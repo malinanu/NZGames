@@ -5,12 +5,22 @@ town of about 420 × 360 m with a township, bach road, beach, wharf, campground,
 reserve and lighthouse headland. Step into a game's ring to play it in place, spot native
 birds, collect postcards and do small jobs for the locals.
 
-| Game | Where | Status |
+| Game | Where | Kind |
 |---|---|---|
-| Jandal Flip | Bach backyard | Playable |
-| Trap Line | Bush block | Playable |
-| 10 more (cricket, water bombs, BBQ, ute, pav lab, parade, flags, seagull, garden, tilt) | Marked in the world | Coming soon |
-| Kōrero Kirihimete, Star Waka | Hidden unless `?preview` | Not built; need a Māori reviewer first |
+| Jandal Flip | Bach Road backyard | Fun · daily course |
+| Backyard Cricket | Paddock behind the green | Fun · daily bowling |
+| Water Bomb Boxing Day | Neighbour's yard, Bach Road | Fun · turn-based vs the neighbour |
+| Pack the Ute | Bach driveway | Fun · daily packing puzzle |
+| Mine! Seagull Christmas | The beach | Fun · play as the gull |
+| Snags & Pav: BBQ Rush | Our bach's deck | Fun · 90 s cooking rush |
+| Float Your Boat | East side of the green, then main street | Fun · daily parade theme |
+| Trap Line | Bush reserve clearing | Learn · predator control |
+| Between the Flags | Patrol tower on the beach | Learn · spotting rips |
+| Tilt! | Lighthouse lookout | Learn · why seasons happen |
+| Pav Lab | Bake-off tent on the green | Learn · food chemistry and ratios |
+| Pōhutukawa Garden | Bush clearing (west) | Learn · year-round nectar |
+| Kōrero Kirihimete | Yellow bach (`?preview` only) | Learn · te reo at the table. Gated until reviewed |
+| Star Waka | End of the wharf (`?preview` only) | Learn · wayfinding. Gated until partnered |
 
 ## Run
 

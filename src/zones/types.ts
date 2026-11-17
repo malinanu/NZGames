@@ -59,4 +59,8 @@ export interface ZoneDef {
   load?: () => Promise<ZoneModule>;
   /** Hidden from the public world until a reviewer signs off (?preview shows it). */
   gated?: boolean;
+  /** Radius of ground levelled flat for the game (0 = leave the ground as it is). */
+  pad?: number;
+  /** Radius kept clear of random trees and bushes. */
+  clear?: number;
 }
