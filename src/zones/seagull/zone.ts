@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { spawnProp } from '../../shared/assets';
 import { hashString, mulberry32, nzDateLabel } from '../../shared/rng';
 import type { Character } from '../../character/character';
-import { best, burst, Countdown, disposeTree, helper, mesh, pointer, v3 } from '../kit';
+import { best, burst, controls, Countdown, disposeTree, helper, mesh, pointer, v3 } from '../kit';
 import type { GameZone, ZoneContext } from '../types';
 
 /**
@@ -93,6 +93,7 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
   let swoop = 0;
   let stunned = 0;
   let auto = false;
+  let padSteering = false;
   let bound: ReturnType<typeof pointer> | null = null;
   const nest = v3(0, 0, -AREA.z - 2.5);
   let rng = mulberry32(hashString(`gull:${ctx.seed}`));
@@ -173,7 +174,11 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
         move: (p) => p.ground && (target = p.ground.clone()),
         tap: (p) => p.ground && tryGrab(p.ground),
       });
-      ui.hint('Hold on the sand to fly there. Tap food near you to swoop. Grab it while the eye is green, then fly it back to the rocks.');
+      ui.hint(controls({
+        touch: 'Hold on the sand to fly there. Tap food near you to swoop. Grab it while the eye is green, then fly it back to the rocks.',
+        keyboard: 'Fly with the arrows or WASD, {Space} to swoop on food near you. Grab it while the eye is green, then fly it back to the rocks.',
+        pad: 'Fly with the left stick, {A} to swoop on food near you. Grab it while the eye is green, then fly it back to the rocks.',
+      }));
       hud();
     },
     stop() {
@@ -217,6 +222,22 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
         }
       }
 
+      // Keyboard/gamepad: the stick flies the gull (the chase camera looks along +Z, so screen
+      // right is -X), A / Space swoops on the nearest food in reach.
+      const stick = ctx.input.stick();
+      if (!auto && stunned <= 0 && (stick.x || stick.y)) {
+        target = v3(gull.position.x - stick.x * 3, 0, gull.position.z + stick.y * 3);
+        padSteering = true;
+      } else if (padSteering) {
+        target = null;
+        padSteering = false;
+      }
+      if (!auto && ctx.input.confirm()) {
+        const here = v3(gull.position.x, 0, gull.position.z);
+        const food = foods.filter((f) => !f.taken && f.object.position.distanceTo(here) < GRAB_RANGE).sort((a, b) => a.object.position.distanceTo(here) - b.object.position.distanceTo(here))[0];
+        tryGrab(food ? food.object.position.clone() : here);
+      }
+
       stunned = Math.max(0, stunned - dt);
       swoop = Math.max(0, swoop - dt);
       const height = carrying ? 3 : 2.4 - Math.sin((swoop / 0.6) * Math.PI) * 2;
@@ -252,14 +273,14 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       // Chase camera, behind and above the gull, looking at the picnic.
       const cam = root.localToWorld(gull.position.clone().add(v3(0, 7, -9)));
       const look = root.localToWorld(gull.position.clone().lerp(v3(0, 0, 1), 0.4).setY(0.4));
-      ctx.rig.shot(cam, look, 4);
+      ctx.rig.shot(cam, look, 4, true);
     },
     dispose() {
       zone.stop();
       disposeTree(root);
     },
     debug: {
-      state: () => ({ phase, score, caught, time: Math.round(clock.left) }),
+      state: () => ({ phase, score, caught, time: Math.round(clock.left), carrying: carrying?.name ?? null, gull: { x: +gull.position.x.toFixed(1), z: +gull.position.z.toFixed(1) } }),
       autoplay: async () => {
         auto = true;
         while (phase !== 'done') await new Promise((r) => window.setTimeout(r, 100));

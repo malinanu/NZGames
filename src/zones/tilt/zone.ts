@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { best, disposeTree, fitDistance, frame, mesh, v3 } from '../kit';
+import { best, controls, disposeTree, fitDistance, frame, mesh, v3 } from '../kit';
 import type { GameZone, ZoneContext } from '../types';
 
 /**
@@ -122,6 +122,8 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
   // -- State ----------------------------------------------------------------------------
   let phase: Phase = 'idle';
   let tilt = 0;
+  /** Unrounded tilt while it is steered with a stick or held key. */
+  let tiltF = 0;
   let month = 6;
   let puzzle = 0;
   let tries = 0;
@@ -222,10 +224,16 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       awaitingNext = false;
       ctx.player.place(v3(-1.6, 0, 1.6), Math.PI * 0.85);
       const d = fitDistance(ctx, 5.2, 4.6);
-      frame(ctx, v3(0, 1.6 + d * 0.55, -1.2 + d * 0.8), v3(0, 1.3, -1.2));
+      frame(ctx, v3(0, 1.6 + d * 0.55, -1.2 + d * 0.8), v3(0, 1.3, -1.2), 3.2, false);
       ui.sheet(sheetEl);
       set(0, 6);
+      tiltF = 0;
       showPuzzle();
+      ui.hint(controls({
+        touch: 'Slide the month and the tilt, then check.',
+        keyboard: 'Tilt with {←} {→}, month with {↑} {↓}, {Space} to check.',
+        pad: 'Tilt with the left stick, month with {LB} {RB} or up and down, {A} to check.',
+      }));
     },
     stop() {
       auto = false;
@@ -240,6 +248,19 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       shown += d * Math.min(1, dt * 4);
       earthPos.position.set(Math.cos(shown) * ORBIT, 1.6, Math.sin(shown) * ORBIT);
       globe.rotation.y = elapsed * 0.8;
+      if (!auto && phase === 'play') {
+        // Keyboard/gamepad: stick x leans the axis smoothly; up/down or LB/RB step the month.
+        const input = ctx.input;
+        const x = input.stick().x;
+        if (x) {
+          if (Math.abs(tiltF - tilt) >= 1) tiltF = tilt;
+          tiltF = THREE.MathUtils.clamp(tiltF + x * 30 * dt, -45, 45);
+          set(tiltF, month);
+        }
+        const m = input.nav().y + (input.pressed('rb') ? 1 : 0) - (input.pressed('lb') ? 1 : 0);
+        if (m) set(tilt, (month + m + 12) % 12);
+        if (input.confirm() || input.keyPressed('Enter')) check();
+      }
       if (auto && phase === 'play') {
         if (awaitingNext) check();
         else {

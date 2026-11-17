@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { spawnProp } from '../../shared/assets';
 import { hashString, mulberry32, shuffle } from '../../shared/rng';
-import { best, burst, disposeTree, fitDistance, frame, helper, mesh, pointer, toScreen, v3 } from '../kit';
+import { best, burst, controls, cursorRing, disposeTree, fitDistance, frame, helper, mesh, pointer, step, toScreen, usingButtons, v3 } from '../kit';
 import type { GameZone, ZoneContext } from '../types';
 
 /**
@@ -109,6 +109,21 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
     render();
   };
 
+  // -- Keyboard/gamepad: the stick moves along the table, A hands it over, Y shows English. --
+  const ring = cursorRing(0.22);
+  root.add(ring.object);
+  let itemCursor = 0;
+  const padInput = () => {
+    const input = ctx.input;
+    const nav = input.nav();
+    if (nav.x || nav.y) itemCursor = step(ctx, items.map((x) => x.spot), itemCursor, nav);
+    if (input.confirm()) pick(items[itemCursor].t.id);
+    if (phase === 'play' && (input.pressed('north') || input.keyPressed('Enter'))) {
+      showEnglish = !showEnglish;
+      render();
+    }
+  };
+
   const finish = () => {
     phase = 'done';
     ui.sheet(null);
@@ -135,7 +150,7 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       phase = 'play';
       ctx.player.place(v3(0, 0, 0.6), Math.PI);
       const d = fitDistance(ctx, 3, 2.2);
-      frame(ctx, v3(0, top + d * 0.75, -0.6 + d * 0.65), v3(0, top, -0.7));
+      frame(ctx, v3(0, top + d * 0.75, -0.6 + d * 0.65), v3(0, top, -0.7), 3.2, false);
       bound = pointer(ctx, {
         planeY: top,
         tap: (p) => {
@@ -144,7 +159,12 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
           if (hit && hit.d < 0.3) pick(hit.x.t.id);
         },
       });
-      ui.hint('Tap what they ask for on the table. Tap “Show English” if you get stuck.');
+      itemCursor = 0;
+      ui.hint(controls({
+        touch: 'Tap what they ask for on the table. Tap “Show English” if you get stuck.',
+        keyboard: 'Arrows move along the table, {Space} hands it over, {Enter} shows the English.',
+        pad: 'Left stick moves along the table, {A} hands it over, {Y} shows the English.',
+      }));
       render();
     },
     stop() {
@@ -154,8 +174,10 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       phase = 'idle';
       ui.sheet(null);
     },
-    update(dt) {
+    update(dt, elapsed) {
       yay.update(dt);
+      if (phase === 'play' && !auto) padInput();
+      ring.update(phase === 'play' && usingButtons(ctx), items[itemCursor].spot.clone().setY(top + 0.02), elapsed);
       if (auto && phase === 'play') pick(order[round].id);
     },
     dispose() {
@@ -163,7 +185,7 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       disposeTree(root);
     },
     debug: {
-      state: () => ({ phase, round, firstTry }),
+      state: () => ({ phase, round, firstTry, itemCursor, showEnglish }),
       item: (id: string) => toScreen(ctx, items.find((x) => x.t.id === id)!.spot),
       autoplay: async () => {
         auto = true;

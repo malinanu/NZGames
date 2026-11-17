@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { SEA_LEVEL } from '../../world/terrain';
-import { best, disposeTree, frame, mesh, pointer, v3 } from '../kit';
+import { best, controls, disposeTree, frame, mesh, pointer, v3 } from '../kit';
 import type { GameZone, ZoneContext } from '../types';
 
 /**
@@ -157,7 +157,11 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
           lastX = p.x;
         },
       });
-      ui.hint('Drag left and right (or hold the steer buttons) to keep the bright star over the bow.');
+      ui.hint(controls({
+        touch: 'Drag left and right (or hold the steer buttons) to keep the bright star over the bow.',
+        keyboard: 'Steer with {←} {→} to keep the bright star over the bow. {Space} switches to the next star.',
+        pad: 'Steer with the left stick to keep the bright star over the bow. {A} switches to the next star.',
+      }));
     },
     stop() {
       auto = false;
@@ -175,6 +179,11 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       if (phase !== 'sail') return;
       t += dt;
       heading += steer * 22 * dt;
+      // Keyboard/gamepad: the stick steers like the buttons (analogue), A / Space takes the next star.
+      if (!auto) {
+        heading += ctx.input.stick().x * 22 * dt;
+        if (ctx.input.confirm() || ctx.input.pressed('north') || ctx.input.keyPressed('Enter')) nextStar();
+      }
       // A new star rises roughly every 13 s from the same point on the horizon.
       if (t - risen[risen.length - 1] > 13) risen.push(t);
       for (let i = 0; i < risen.length && i < guides.length; i++) {

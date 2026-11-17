@@ -1,7 +1,35 @@
 import type * as THREE from 'three';
 import type { CameraRig } from '../engine/cameraRig';
+import type { Device, Pad } from '../engine/input';
 import type { Character } from '../character/character';
 import type { ZoneUi } from '../world/zoneUi';
+
+export type PadButton = 'south' | 'east' | 'west' | 'north' | 'lb' | 'rb' | 'start' | 'select' | 'up' | 'down' | 'left' | 'right';
+
+/**
+ * Keyboard and gamepad input for a game, read in `update()`. Presses are edge-detected per
+ * frame. East (B / Circle) and Escape are taken by the world: they leave the game.
+ */
+export interface ZoneInput {
+  /** The gamepad in use (sticks with dead zone, triggers 0..1), or null. */
+  pad(): Pad | null;
+  /** A gamepad button went down this frame. */
+  pressed(button: PadButton): boolean;
+  held(button: PadButton): boolean;
+  /** Any of these keys (KeyboardEvent.code) is held. */
+  key(...codes: string[]): boolean;
+  /** Any of these keys went down this frame. */
+  keyPressed(...codes: string[]): boolean;
+  /** Left stick, d-pad or WASD/arrows. x right, y up (screen up / forward), length up to 1. */
+  stick(): { x: number; y: number };
+  /** One step per press (repeating while held): d-pad, stick flick, arrows/WASD. -1, 0 or 1. */
+  nav(): { x: number; y: number };
+  /** A / Cross, or Space, pressed this frame. */
+  confirm(): boolean;
+  confirmHeld(): boolean;
+  /** The device used last (keyboard, touch, xbox or playstation). */
+  device(): Device;
+}
 
 /** What the world hands a game zone. Everything is in world space unless noted. */
 export interface ZoneContext {
@@ -10,6 +38,8 @@ export interface ZoneContext {
   rig: CameraRig;
   canvas: HTMLCanvasElement;
   ui: ZoneUi;
+  /** Keyboard and gamepad. Touch and mouse stay on the canvas (see `pointer()` in kit.ts). */
+  input: ZoneInput;
   /** The zone's anchor in the world: build everything as children of this group. */
   root: THREE.Group;
   /** The player's character: zones may pose and animate it while the game runs. */

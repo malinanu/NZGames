@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { hashString, mulberry32, nzDateLabel } from '../../shared/rng';
 import type { Character } from '../../character/character';
-import { best, burst, Countdown, disposeTree, fitDistance, frame, helper, mesh, toScreen, v3 } from '../kit';
+import { best, burst, controls, Countdown, disposeTree, fitDistance, frame, helper, mesh, toScreen, v3 } from '../kit';
 import type { GameZone, ZoneContext } from '../types';
 
 /**
@@ -82,9 +82,33 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
           return `<button class="pick slot ${state === 'Ready' ? 'on' : ''} ${state === 'Burnt!' ? 'burnt' : ''}" data-slot="${i}" ${s.food ? '' : 'disabled'}><b>${s.food ? FOOD[s.food].name : 'Grill'}</b><small>${state}</small><i style="--p:${pct}%"></i></button>`;
         })
         .join('')}</div>
-      <div class="tool-row four">${(['snag', 'patty', 'corn', 'pav'] as Food[]).map((f) => `<button class="btn" data-food="${f}">${f === 'pav' ? 'Cut pav' : `+ ${FOOD[f].name}`}</button>`).join('')}</div>`;
+      <div class="tool-row four">${(['snag', 'patty', 'corn', 'pav'] as Food[]).map((f, i) => `<button class="btn" data-food="${f}">${f === 'pav' ? 'Cut pav' : `+ ${FOOD[f].name}`}${keyGlyphs(i)}</button>`).join('')}</div>`;
     sheetEl.querySelectorAll<HTMLButtonElement>('[data-slot]').forEach((b) => b.addEventListener('click', () => takeOff(Number(b.dataset.slot))));
     sheetEl.querySelectorAll<HTMLButtonElement>('[data-food]').forEach((b) => b.addEventListener('click', () => add(b.dataset.food as Food)));
+  };
+
+  // -- Keyboard/gamepad: 1-4 or the d-pad (up snag, right burger, down corn, left pav) add
+  // food, A / Space takes off whatever is ready. -------------------------------------------
+  const ORDER: Food[] = ['snag', 'patty', 'corn', 'pav'];
+  const DPAD = ['↑', '→', '↓', '←'];
+  const keyGlyphs = (i: number) =>
+    `<span class="glyph" data-for="keyboard">${i + 1}</span><span class="glyph" data-for="xbox">${DPAD[i]}</span><span class="glyph" data-for="playstation">${DPAD[i]}</span>`;
+  const padInput = () => {
+    const input = ctx.input;
+    const picks = [
+      input.pressed('up') || input.keyPressed('Digit1', 'Numpad1', 'ArrowUp'),
+      input.pressed('right') || input.keyPressed('Digit2', 'Numpad2', 'ArrowRight'),
+      input.pressed('down') || input.keyPressed('Digit3', 'Numpad3', 'ArrowDown'),
+      input.pressed('left') || input.keyPressed('Digit4', 'Numpad4', 'ArrowLeft'),
+    ];
+    picks.forEach((on, i) => on && add(ORDER[i]));
+    if (input.confirm()) {
+      // Ready first, then anything burnt (to clear it), else the closest to done (says it's raw).
+      const order = slots.map((sl, i) => ({ sl, i })).filter((x) => x.sl.food);
+      const pick = order.find((x) => x.sl.t >= COOK && x.sl.t < BURN) ?? order.find((x) => x.sl.t >= BURN) ?? order.sort((a, b) => b.sl.t - a.sl.t)[0];
+      if (pick) takeOff(pick.i);
+      else ui.toast('Nothing on the grill yet', 'info');
+    }
   };
 
   const add = (f: Food) => {
@@ -186,8 +210,12 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       document.body.appendChild(labelLayer);
       ctx.player.place(v3(-1.6, 0, 0.2), Math.PI);
       const d = fitDistance(ctx, 6, 4.8);
-      frame(ctx, v3(0.2, 1 + d * 0.6, 0.6 + d * 0.8), v3(0.2, 0.9, 0.3));
-      ui.hint('Add food to the grill, tap it when it says Ready, and it goes to whoever ordered it. Don’t let it burn!');
+      frame(ctx, v3(0.2, 1 + d * 0.6, 0.6 + d * 0.8), v3(0.2, 0.9, 0.3), 3.2, false);
+      ui.hint(controls({
+        touch: 'Add food to the grill, tap it when it says Ready, and it goes to whoever ordered it. Don’t let it burn!',
+        keyboard: '{1}–{4} or the arrows add food, {Space} takes off what’s ready and serves it. Don’t let it burn!',
+        pad: 'The d-pad adds food, {A} takes off what’s ready and serves it. Don’t let it burn!',
+      }));
       renderSheet();
       ui.sheet(sheetEl);
       hud();
@@ -203,6 +231,7 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       smoke.update(dt);
       if (phase !== 'play') return;
       if (clock.tick(dt)) return finish();
+      if (!auto) padInput();
       let changed = false;
       for (const s of slots) {
         if (!s.food) continue;
@@ -261,7 +290,7 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       disposeTree(root);
     },
     debug: {
-      state: () => ({ phase, score, served, lost, burnt, time: Math.round(clock.left) }),
+      state: () => ({ phase, score, served, lost, burnt, time: Math.round(clock.left), grill: slots.map((x) => x.food) }),
       autoplay: async () => {
         auto = true;
         while (phase !== 'done') await new Promise((r) => window.setTimeout(r, 100));

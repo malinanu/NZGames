@@ -1,5 +1,9 @@
 import * as THREE from 'three';
 
+/** The screen zone shots were framed on: a 420x800 portrait phone, 60° vertical FOV. */
+const REF_ASPECT = 420 / 800;
+const REF_FOV = 60;
+
 /**
  * Two modes:
  *  - follow: third-person behind the player, yaw turned by drag/keys, eased.
@@ -15,6 +19,8 @@ export class CameraRig {
   private readonly goalPos = new THREE.Vector3();
   private readonly goalLook = new THREE.Vector3();
   private sharpness = 6;
+  private readonly shotFrom = new THREE.Vector3();
+  private shotFit = false;
   private snapNext = true;
   /** Set by the world: true where the camera would be inside a building. */
   obstructed: ((x: number, z: number) => boolean) | null = null;
@@ -46,12 +52,35 @@ export class CameraRig {
     this.sharpness = 3.5;
   }
 
-  /** Move to a fixed shot. `sharpness` controls how quickly it eases (higher = faster). */
-  shot(position: THREE.Vector3, target: THREE.Vector3, sharpness = 3.2): void {
+  /**
+   * Move to a fixed shot. `sharpness` controls how quickly it eases (higher = faster).
+   * With `fit`, the shot is treated as framed for a 420x800 portrait phone and pulled back
+   * along (position - target) on screens that would otherwise crop it (see `shotScale`).
+   * It is re-applied every frame, so turning the phone mid-game keeps the framing.
+   */
+  shot(position: THREE.Vector3, target: THREE.Vector3, sharpness = 3.2, fit = false): void {
     this.mode = 'shot';
-    this.goalPos.copy(position);
+    this.shotFrom.copy(position);
+    this.shotFit = fit;
     this.goalLook.copy(target);
     this.sharpness = sharpness;
+  }
+
+  /**
+   * Ratio overflow for zone shots, which were tuned on a 420x800 portrait phone (60° vertical
+   * FOV, see App.resize). A narrower phone sees less to the sides, so the camera backs off until
+   * the tuned width fits again. Landscape screens already see far more to the sides but get a
+   * 50° vertical FOV, so they back off a little for the height. The result is softened so it
+   * stays gentle: 1 on the tuned phone and on wider portrait screens, about 1.1 on a 9:19.5
+   * phone and on 16:9 landscape.
+   */
+  shotScale(): number {
+    const tanV = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
+    const tanH = tanV * this.camera.aspect;
+    const refV = Math.tan(THREE.MathUtils.degToRad(REF_FOV / 2));
+    const refH = refV * REF_ASPECT;
+    const need = Math.max(1, refH / tanH, 1 + (refV / tanV - 1) * 0.5);
+    return Math.min(1.4, 1 + (need - 1) * 0.8);
   }
 
   snap(): void {
@@ -83,6 +112,9 @@ export class CameraRig {
       this.goalLook.copy(subject).setY(subject.y + 1.3);
       // Ease back to normal follow speed after a shot hands over.
       this.sharpness += (6 - this.sharpness) * Math.min(1, dt * 1.5);
+    } else {
+      const k = this.shotFit ? this.shotScale() : 1;
+      this.goalPos.copy(this.shotFrom).sub(this.goalLook).multiplyScalar(k).add(this.goalLook);
     }
     const k = this.snapNext ? 1 : 1 - Math.exp(-dt * this.sharpness);
     this.snapNext = false;

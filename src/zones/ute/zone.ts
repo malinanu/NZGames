@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { spawnProp } from '../../shared/assets';
 import { hashString, mulberry32, nzDateLabel, shuffle } from '../../shared/rng';
-import { best, burst, disposeTree, fitDistance, frame, mesh, pointer, v3 } from '../kit';
+import { best, burst, controls, disposeTree, fitDistance, frame, mesh, pointer, usingButtons, v3 } from '../kit';
 import type { GameZone, ZoneContext } from '../types';
 
 /**
@@ -170,15 +170,32 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
   const tapTray = async (local: THREE.Vector3 | null) => {
     if (phase !== 'pack' || !local) return;
     const { col, row } = cellAt(local);
+    await useCell(col, row);
+  };
+  /** Where `selected` would go if dropped on (col, row): centred on it where possible. */
+  const footprint = (col: number, row: number) => {
+    if (!selected) return { c0: col, r0: row, w: 1, d: 1 };
+    const { w, d } = dims(selected);
+    const c0 = Math.min(Math.max(0, col - Math.floor((w - 1) / 2)), COLS - w);
+    const r0 = Math.min(Math.max(0, row - Math.floor((d - 1) / 2)), ROWS - d);
+    return { c0, r0, w, d };
+  };
+  let placing = false;
+  const useCell = async (col: number, row: number) => {
+    if (phase !== 'pack') return;
     const occupant = grid()[row]?.[col];
     if (occupant) return remove(occupant);
     if (!selected) return ui.toast('Pick something to pack first', 'info');
-    const { w, d } = dims(selected);
-    // Centre the item on the tapped cell where possible.
-    const c0 = Math.min(Math.max(0, col - Math.floor((w - 1) / 2)), COLS - w);
-    const r0 = Math.min(Math.max(0, row - Math.floor((d - 1) / 2)), ROWS - d);
+    const { c0, r0, w, d } = footprint(col, row);
     if (!fits(w, d, c0, r0)) return ui.toast("Won't fit there. Turn it or move something", 'bad');
-    await place(selected, c0, r0, w, d);
+    // Building the item is async: ignore a second press until it is on the tray.
+    if (placing) return;
+    placing = true;
+    try {
+      await place(selected, c0, r0, w, d);
+    } finally {
+      placing = false;
+    }
   };
 
   const drive = () => {
@@ -238,6 +255,49 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
     }
   };
 
+  // -- Keyboard/gamepad: LB/RB (Q/E) pick the item, the stick moves a cursor over the tray,
+  // A / Space drops or lifts, Y / R turns it, Start / Enter hits the road. -----------------
+  const cur = { col: 1, row: 2 };
+  const padInput = () => {
+    const input = ctx.input;
+    const cycle = (input.pressed('rb') || input.keyPressed('KeyE') ? 1 : 0) - (input.pressed('lb') || input.keyPressed('KeyQ') ? 1 : 0);
+    if (cycle) {
+      const left = load.filter((t) => !placed.some((p) => p.type === t));
+      if (left.length) {
+        const i = selected ? left.indexOf(selected) : cycle > 0 ? -1 : 0;
+        selected = left[(i + cycle + left.length) % left.length];
+        rotated = false;
+        sheet();
+        sheetEl.querySelector('.pick.on')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+      }
+    }
+    const nav = input.nav();
+    cur.col = THREE.MathUtils.clamp(cur.col + nav.x, 0, COLS - 1);
+    cur.row = THREE.MathUtils.clamp(cur.row - nav.y, 0, ROWS - 1);
+    if ((input.pressed('north') || input.keyPressed('KeyR')) && selected) {
+      rotated = !rotated;
+      sheet();
+    }
+    if (input.confirm()) void useCell(cur.col, cur.row);
+    if (input.pressed('start') || input.pressed('west') || input.keyPressed('Enter')) {
+      if (placed.length) drive();
+      else ui.toast('Pack something first', 'info');
+    }
+  };
+  const paintCells = () => {
+    const show = usingButtons(ctx);
+    const f = footprint(cur.col, cur.row);
+    const ok = !selected || fits(f.w, f.d, f.c0, f.r0);
+    cellMeshes.forEach((m, i) => {
+      const r = Math.floor(i / COLS);
+      const c = i % COLS;
+      const on = show && c >= f.c0 && c < f.c0 + f.w && r >= f.r0 && r < f.r0 + f.d;
+      const mat = m.material as THREE.MeshBasicMaterial;
+      mat.color.set(on ? (ok ? '#ffd23f' : '#ff5a3c') : r === ROWS - 1 ? '#ffd9b0' : '#ffffff');
+      mat.opacity = on ? 0.8 : 0.35;
+    });
+  };
+
   const reset = () => {
     for (const p of placed) tray.remove(p.object);
     placed = [];
@@ -255,9 +315,13 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       phase = 'pack';
       ctx.player.place(v3(2.6, 0, -1.6), -Math.PI / 2);
       const dist = fitDistance(ctx, 3.2, 4.4);
-      frame(ctx, v3(0, dist * 0.95 + TRAY_Y, dist * 0.32 + 0.9), v3(0, TRAY_Y, 0.75));
+      frame(ctx, v3(0, dist * 0.95 + TRAY_Y, dist * 0.32 + 0.9), v3(0, TRAY_Y, 0.75), 3.2, false);
       bound = pointer(ctx, { planeY: TRAY_Y, tap: (p) => void tapTray(p.ground) });
-      ui.hint('Tap an item, then tap the tray. Fragile things break in the back row (orange).');
+      ui.hint(controls({
+        touch: 'Tap an item, then tap the tray. Fragile things break in the back row (orange).',
+        keyboard: '{Q} {E} pick an item, arrows move, {Space} packs it, {R} turns it, {Enter} hits the road. Fragile things break in the back row (orange).',
+        pad: '{LB} {RB} pick an item, left stick moves, {A} packs it, {Y} turns it, {Start} hits the road. Fragile things break in the back row (orange).',
+      }));
       sheet();
       showFootprint();
     },
@@ -270,6 +334,10 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
     },
     update(dt, elapsed) {
       dust.update(dt);
+      if (phase === 'pack') {
+        padInput();
+        paintCells();
+      }
       if (phase !== 'drive') return;
       driveT += dt;
       // Bump along the gravel: the ute rocks, loose things lift and some fly out of the back.
@@ -292,7 +360,7 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       disposeTree(root);
     },
     debug: {
-      state: () => ({ phase, placed: placed.map((p) => p.type.id), used: used() }),
+      state: () => ({ phase, placed: placed.map((p) => p.type.id), used: used(), selected: selected?.id ?? null, cursor: { ...cur } }),
       autoplay: async () => {
         await autoPack();
         drive();

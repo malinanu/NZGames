@@ -14,7 +14,8 @@ import * as THREE from 'three';
  *    mappings (see `readPad`).
  *
  * The last device used is tracked so prompts can show the right glyphs (`Glyphs`).
- * Zones switch this off and handle their own pointer input on the canvas.
+ * Zones switch this off and handle their own pointer input on the canvas; their keyboard and
+ * gamepad input goes through `ZoneInput` (src/world/zoneInput.ts), which reads `pad` from here.
  */
 
 export type Device = 'keyboard' | 'touch' | 'xbox' | 'playstation';
@@ -165,9 +166,10 @@ export class Input {
   constructor(private readonly surface: HTMLElement) {
     this.device = matchMedia('(pointer: coarse)').matches ? 'touch' : 'keyboard';
     window.addEventListener('keydown', (e) => {
-      if (!this.enabledFlag || e.repeat) return;
       if ((e.target as HTMLElement)?.closest?.('input, textarea')) return;
+      // Track the device even inside zones (which switch walking off), so their hints match.
       this.use('keyboard');
+      if (!this.enabledFlag || e.repeat) return;
       this.keys.add(e.code);
       if (e.code === 'Space') this.jumpQueued = true;
       if (e.code === 'KeyE' || e.code === 'Enter') this.interactQueued = true;
@@ -177,6 +179,8 @@ export class Input {
     window.addEventListener('blur', () => this.keys.clear());
     window.addEventListener('gamepadconnected', (e) => this.use(padKind((e as GamepadEvent).gamepad.id)));
 
+    // Zones handle their own pointers, but the device still has to follow them for the hints.
+    window.addEventListener('pointerdown', (e) => this.use(e.pointerType === 'mouse' ? 'keyboard' : 'touch'), { capture: true });
     surface.addEventListener('pointerdown', (e) => this.down(e));
     surface.addEventListener('pointermove', (e) => this.moveTo(e));
     surface.addEventListener('pointerup', (e) => this.up(e));
@@ -304,14 +308,16 @@ export class Input {
     this.pad = found;
     if (!found) return;
     const pressed = (k: keyof Pad) => !!found![k] && !this.prevButtons[k];
-    const active = found.lx || found.ly || found.rx || found.ry || found.rt > 0.3 || found.south || found.east || found.start;
+    const active = found.lx || found.ly || found.rx || found.ry || found.lt > 0.3 || found.rt > 0.3 ||
+      (['south', 'east', 'west', 'north', 'lb', 'rb', 'start', 'select', 'up', 'down', 'left', 'right'] as const).some((k) => found![k]);
     if (active) this.use(found.kind);
+    // Inside games (walking disabled) the buttons belong to the game (ZoneInput).
     if (this.enabledFlag) {
       if (pressed('south')) this.jumpQueued = true;
       if (pressed('east')) this.interactQueued = true;
+      if (pressed('start')) this.menuQueued = true;
+      if (pressed('rb') || pressed('lb')) this.zoom += pressed('rb') ? 0.25 : -0.25;
     }
-    if (pressed('start')) this.menuQueued = true;
-    if (pressed('rb') || pressed('lb')) this.zoom += pressed('rb') ? 0.25 : -0.25;
     this.prevButtons = found;
   }
 
