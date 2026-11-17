@@ -31,17 +31,34 @@ npm run build    # static site in dist/
 ```
 
 Needs Node 22. URL options: `?seed=anything` fixes the daily course/block, `?reveal` shows every
-predator at night in Trap Line, `?preview` shows gated zones.
+predator at night in Trap Line, `?preview` shows gated zones, `?quality=low|high` overrides the
+graphics preset, `?renderer=webgl` forces the WebGL 2 backend, `?time=0..1` jumps the day/night
+cycle (0 day, 0.42 dusk, 0.6 night, 0.8 dawn) and freezes it.
+
+## Rendering and controls
+
+- three.js `WebGPURenderer`: WebGPU where the browser has it, WebGL 2 otherwise (most iPhones
+  today). Every custom shader is a TSL node material, so both backends draw the same thing.
+  The map sheet shows which one is running.
+- A world data texture (`src/world/dataTexture.ts`: paths, grass density, water depth, sand)
+  drives the terrain colour, the GPU grass around the player and the shore ripples.
+- Day, dusk, night and dawn presets (`src/world/sky.ts`), with fog measured from the player.
+- Quality: phones default to Smooth (low), desktops to Detailed (high); the map sheet toggles it.
+- Touch: drag from your character to walk (past the ground ring to run), tap them to jump,
+  two fingers to zoom and turn. Keyboard: WASD, drag or Q/R to look, wheel to zoom, Space, E.
+  Gamepads: standard, Xbox and PlayStation layouts. Prompts follow the device you used last.
+- Performance: static props are baked per material per 48 m cell (`src/world/batch.ts`),
+  repeated props are instanced per 80 m cell, characters are culled out of view.
 
 ## Layout
 
-- `src/engine/` – renderer and loop (`app.ts`), thumb-stick and keyboard (`input.ts`), camera rig, 2D walking colliders.
+- `src/engine/` – renderer and loop (`app.ts`), quality presets (`quality.ts`), shared TSL uniforms and fog (`tsl.ts`), touch, keyboard and gamepad input (`input.ts`), camera rig, 2D walking colliders.
 - `src/character/` – the six KayKit Adventurers re-dressed as Kiwi holidaymakers (`character.ts`) and the walking controller.
 - `src/world/` – the lie of the land (`terrain.ts`, one `groundHeight()` everything stands on), the districts (`map.ts`), placement helper with a grounding audit (`build.ts`), procedural props (`props.ts`), townsfolk, traffic and animals (`life.ts`), birds, postcards and jobs (`collect.ts`), synthesised sound (`audio.ts`), zone list and loading (`zones.ts`, `zoneManager.ts`), shared game HUD (`zoneUi.ts`), all CSS (`world.css`).
 - `src/zones/<game>/zone.ts` – one game each, implementing `GameZone` from `src/zones/types.ts`. Each is lazy-loaded when the player walks near it.
 - `assets-src/kaykit/` – GLTF sources from the KayKit packs (CC0, Kay Lousberg, www.kaylousberg.com).
 - `scripts/models.json` – the props that ship. `npm run assets` copies them to `public/models/` and trims the character animation files (both git-ignored, regenerated on dev/build).
-- `.claude/skills/` – third-party UI skills (impeccable, ui-ux-pro-max, design-taste-frontend) used when working on the interface.
+- `.claude/skills/` – third-party skills used when working on the project: UI (impeccable, ui-ux-pro-max, design-taste-frontend) and game development (from awesome-gamedev-agent-skills and Claude Code Game Studios; licences alongside).
 
 ## Placing things in the world
 
