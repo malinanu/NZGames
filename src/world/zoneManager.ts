@@ -137,6 +137,7 @@ export class ZoneManager {
     slot.zone.dispose();
     slot.zone = null;
     slot.root.clear();
+    slot.root.userData.characters = [];
   }
 
   /** Enter the zone the player is standing in (if it's playable). */
@@ -195,6 +196,8 @@ export class ZoneManager {
       // Tests can fast-forward games (the headless browser runs at a few frames a second).
       const speed = slot === this.active ? ((window as unknown as { __zoneSpeed?: number }).__zoneSpeed ?? 1) : 1;
       slot.zone?.update(dt * speed, elapsed);
+      // Helper characters (see helper() in zones/kit.ts): without this they stay in T-pose.
+      if (slot.zone) for (const c of (slot.root.userData.characters ?? []) as { update(dt: number): void }[]) c.update(dt * speed);
       if (!this.active && d < PROMPT_RADIUS) nearest = slot;
       // Pulsing ring.
       const ring = slot.marker.children[0];

@@ -95,6 +95,8 @@ export class Character {
     next.setEffectiveWeight(1);
     if (this.current && this.current !== next) next.crossFadeFrom(this.current, opts.fade ?? 0.2, true);
     next.play();
+    // Apply the pose now, not at the next tick: no T-pose frame for a fresh character.
+    this.mixer.update(0);
     this.current = next;
     this.currentName = name;
     this.oneShotEnd = once ? (opts.then ?? null) : null;

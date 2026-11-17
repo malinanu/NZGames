@@ -52,6 +52,7 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       who.play('Sit_Floor_Idle');
       const eye = mesh(new THREE.SphereGeometry(0.16, 12, 8), '#2f9e5a', at.x - 0.75, 2.1, at.z);
       (eye.material as THREE.Material) = new THREE.MeshBasicMaterial({ color: '#2f9e5a' });
+      eye.visible = false; // only a game cue: hidden while nobody is playing
       root.add(eye);
       return { who, at, watching: false, timer: 0, eye };
     }),
@@ -186,6 +187,7 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
       feathers.update(dt);
       gull.children[1].rotation.z = Math.sin(elapsed * 9) * 0.6;
       gull.children[2].rotation.z = -Math.sin(elapsed * 9) * 0.6;
+      for (const p of people) p.eye.visible = phase === 'play';
       if (phase !== 'play') {
         // Idle: circle above the picnic.
         gull.position.set(Math.cos(elapsed * 0.5) * 5, 5, Math.sin(elapsed * 0.5) * 4);

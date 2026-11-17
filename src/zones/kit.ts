@@ -174,6 +174,8 @@ export async function helper(ctx: ZoneContext, offset: number): Promise<Characte
   const def = CHARACTERS[(mine + 1 + offset) % CHARACTERS.length];
   const c = await createCharacter(def);
   ctx.root.add(c.root);
+  // The zone manager ticks every helper's animation (zones don't have to remember to).
+  ((ctx.root.userData.characters ??= []) as Character[]).push(c);
   return c;
 }
 
