@@ -47,13 +47,15 @@ export function buildSea(data: WorldData, preset: QualityPreset): THREE.Mesh {
     const phase = depth.mul(1.6).sub(world.time.mul(0.35));
     const index = floor(phase);
     const wobble = mx_noise_float(vec3(positionWorld.x.mul(0.04), index, 0)).mul(0.35);
-    const band = smoothstep(float(0.82), float(0.97), fract(phase.add(wobble)));
+    // A thin crest: rises over the back of the band, drops away just before the next one.
+    const f = fract(phase.add(wobble));
+    const band = smoothstep(float(0.88), float(0.95), f).mul(float(1).sub(smoothstep(float(0.97), float(1), f)));
     const near = float(1).sub(smoothstep(float(0.4), float(3.2), depth));
-    col = mix(col, color('#ffffff'), band.mul(near).mul(0.75));
+    col = mix(col, color('#ffffff'), band.mul(near).mul(0.45));
   }
   // The lapping edge right at the sand.
   const edge = float(1).sub(smoothstep(float(0.0), float(0.22), depth.add(sin(positionWorld.x.mul(0.3).add(world.time)).mul(0.05))));
-  col = mix(col, color('#ffffff'), edge.mul(0.85));
+  col = mix(col, color('#ffffff'), edge.mul(0.6));
   // Unlit, so follow the day/night light level like the grass does.
   m.colorNode = col.add(wave.mul(0.3)).mul(world.light);
   // Clear in the shallows (you see the sand through it), solid when deep, nothing on dry land.
@@ -144,6 +146,8 @@ interface Floater {
   drift: THREE.Vector2;
   home: THREE.Vector3;
   tether: number;
+  /** Radius for being nudged along by the player (0 = moored, can't be pushed). */
+  push: number;
 }
 
 /**
@@ -155,8 +159,8 @@ interface Floater {
 export class Buoyancy {
   private readonly items: Floater[] = [];
 
-  add(object: THREE.Object3D, opts: { draft?: number; tether?: number } = {}): void {
-    this.items.push({ object, vy: 0, draft: opts.draft ?? 0.3, drift: new THREE.Vector2((Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.3), home: object.position.clone(), tether: opts.tether ?? 3 });
+  add(object: THREE.Object3D, opts: { draft?: number; tether?: number; push?: number } = {}): void {
+    this.items.push({ object, vy: 0, draft: opts.draft ?? 0.3, drift: new THREE.Vector2((Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.3), home: object.position.clone(), tether: opts.tether ?? 3, push: opts.push ?? 0 });
   }
 
   update(dt: number, t: number, focal: THREE.Vector3): void {
@@ -173,6 +177,19 @@ export class Buoyancy {
       p.x += (f.drift.x + (f.home.x - p.x) * 0.05) * dt;
       p.z += (f.drift.y + (f.home.z - p.z) * 0.05) * dt;
       if (Math.hypot(p.x - f.home.x, p.z - f.home.z) > f.tether) f.drift.multiplyScalar(-1);
+      // Swim or wade into it and it bobs away from you (the swell slowly brings it back).
+      if (f.push > 0) {
+        const dx = p.x - focal.x;
+        const dz = p.z - focal.z;
+        const d = Math.hypot(dx, dz);
+        const reach = f.push + 0.4;
+        if (d < reach && d > 1e-3) {
+          p.x += (dx / d) * (reach - d);
+          p.z += (dz / d) * (reach - d);
+          f.object.rotation.y += (reach - d) * 2;
+          f.vy -= 0.6;
+        }
+      }
       // Rock with the swell.
       const slopeX = seaSurface(p.x + 0.5, p.z, t) - seaSurface(p.x - 0.5, p.z, t);
       const slopeZ = seaSurface(p.x, p.z + 0.5, t) - seaSurface(p.x, p.z - 0.5, t);

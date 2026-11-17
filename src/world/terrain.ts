@@ -12,8 +12,13 @@ import * as THREE from 'three';
  */
 export const WORLD = { minX: -210, maxX: 210, minZ: -185, maxZ: 175 };
 export const SEA_LEVEL = -0.7;
-/** Deepest the player may wade. */
-export const WADE_DEPTH = -1.15;
+/**
+ * Deepest sea floor the player may swim over: about 2 m of water, roughly the patrolled
+ * stretch off the beach. Further out turns you back towards the shore.
+ */
+export const SWIM_LIMIT = SEA_LEVEL - 2.2;
+/** Water deeper than this (metres) is swum, not waded. */
+export const SWIM_DEPTH = 0.95;
 
 /** Z of the waterline at a given X: the bay curves in at the middle. */
 export function waterline(x: number): number {
@@ -215,10 +220,16 @@ export function inStream(x: number, z: number, margin = 0): boolean {
 export function walkable(x: number, z: number): boolean {
   if (x < WORLD.minX + 4 || x > WORLD.maxX - 4 || z < WORLD.minZ + 4) return false;
   const g = groundHeight(x, z);
-  if (g <= WADE_DEPTH) return false;
+  if (g <= SWIM_LIMIT) return false;
   // The stream is too deep to wade: cross on a bridge.
   if (inStream(x, z, 0.2) && g < streamSurface(z) - 0.1) return false;
   return true;
+}
+
+/** Depth of sea water at this spot (0 on land, under the jetty deck, and in the stream). */
+export function seaDepth(x: number, z: number): number {
+  if (z < waterline(x) - 20 || inStream(x, z, 0.5)) return 0;
+  return Math.max(0, SEA_LEVEL - groundHeight(x, z));
 }
 
 export type Biome = 'town' | 'beach' | 'farm' | 'bush' | 'headland' | 'sea';

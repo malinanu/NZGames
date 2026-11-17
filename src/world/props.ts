@@ -40,6 +40,18 @@ export function surfboard(colour: string): THREE.Mesh {
   return m;
 }
 
+/** A classic six-panel beach ball, about 0.7 m across. */
+export function beachBall(): THREE.Group {
+  const g = new THREE.Group();
+  const colours = ['#ff4fa3', '#fbfbf6', '#27c4f5', '#fbfbf6', '#ffd23f', '#fbfbf6'];
+  colours.forEach((c, i) => {
+    const panel = new THREE.Mesh(new THREE.SphereGeometry(0.35, 6, 10, (i * Math.PI) / 3, Math.PI / 3), paint(c));
+    panel.castShadow = true;
+    g.add(panel);
+  });
+  return g;
+}
+
 export function letterbox(colour: string): THREE.Group {
   return group(box(0.08, 1, 0.08, '#e9e4d8', 0, 0.5, 0), box(0.24, 0.2, 0.42, colour, 0, 1.08, 0));
 }

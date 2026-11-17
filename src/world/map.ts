@@ -3,7 +3,7 @@ import type { Placement } from '../shared/assets';
 import { brand } from '../shared/brand';
 import { hashString, mulberry32 } from '../shared/rng';
 import { Colliders } from '../engine/colliders';
-import { Builder, box, cyl, type Place, type Seat } from './build';
+import { Builder, box, cyl, paint, type Place, type Seat } from './build';
 import * as P from './props';
 import {
   addPad, addPlatform, biomeAt, fbm, groundHeight, HEADLAND, inStream, landHeight, SEA_LEVEL, STREAM_Z0, STREAM_Z1, streamHalf, streamSurface, streamX, waterline, WORLD,
@@ -135,6 +135,9 @@ export async function buildWorld(scene: THREE.Scene): Promise<WorldMap> {
   addPlatform(bridgeX - 8.5, bridgeX + 8.5, STREET_Z - 2.2, STREET_Z + 2.2, roadBridgeY, 3);
   const footBridgeY = Math.max(landHeight(119, -100), landHeight(136, -100)) + 0.5;
   addPlatform(118, 137, -101.4, -98.6, footBridgeY, 3);
+  // Stepping stones a little downstream: the one place to cross the stream without the bridge.
+  const STONES = { z: -84, x: streamX(-84), half: streamHalf(-84) + 0.6, y: streamSurface(-84) + 0.1 };
+  addPlatform(STONES.x - STONES.half, STONES.x + STONES.half, STONES.z - 0.55, STONES.z + 0.55, STONES.y, 1.2);
 
   // The world as data (paths, grass, water depth, sand, height) for the TSL shaders.
   const data = buildWorldData();
@@ -157,12 +160,32 @@ export async function buildWorld(scene: THREE.Scene): Promise<WorldMap> {
   campground(b);
   farm(b);
   bush(b, footBridgeY, animated);
+  for (let x = STONES.x - STONES.half + 0.35, i = 0; x < STONES.x + STONES.half; x += 0.72, i++) {
+    const stone = new THREE.Mesh(new THREE.IcosahedronGeometry(0.42, 0), paint(i % 2 ? '#8d918c' : '#7a7f7b'));
+    stone.scale.set(1, 0.45, 0.95 + (i % 3) * 0.1);
+    stone.rotation.y = i * 1.7;
+    stone.position.set(x, STONES.y - 0.12, STONES.z + Math.sin(i * 2.3) * 0.12);
+    stone.castShadow = stone.receiveShadow = true;
+    b.scene.add(stone);
+  }
   headland(b, roadBridgeY);
   vegetation(b);
   scene.add(buildClouds(animated));
 
   await b.done();
   for (const f of floaters) buoyancy.add(f, { draft: 0.35, tether: 2.5 });
+  // Toys off the beach, between the gull spot and the patrolled flags: free to nudge around.
+  const ball = P.beachBall();
+  ball.position.set(-3, SEA_LEVEL, waterline(-3) + 9);
+  scene.add(ball);
+  buoyancy.add(ball, { draft: 0.22, tether: 6, push: 0.35 });
+  for (const [x, dz, c] of [[-11, 13, '#ff7a1a'], [44, 11, '#27c4f5']] as [number, number, string][]) {
+    const board = P.surfboard(c);
+    board.position.set(x, SEA_LEVEL, waterline(x) + dz);
+    board.rotation.y = rand(0, 6.28);
+    scene.add(board);
+    buoyancy.add(board, { draft: 0.05, tether: 4, push: 0.9 });
+  }
   return {
     colliders,
     seats: b.seats,

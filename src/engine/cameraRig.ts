@@ -19,8 +19,27 @@ export class CameraRig {
   /** Set by the world: true where the camera would be inside a building. */
   obstructed: ((x: number, z: number) => boolean) | null = null;
   private pull = 1;
+  /** Player zoom (pinch, wheel, shoulder buttons), 0.6 (close) to 1.7 (far). */
+  zoom = 1;
+  /** Fixed scale: quality preset times the screen-shape overflow (see `fitScreen`). */
+  scale = 1;
 
   constructor(private readonly camera: THREE.PerspectiveCamera) {}
+
+  zoomBy(amount: number): void {
+    this.zoom = THREE.MathUtils.clamp(this.zoom * Math.exp(amount), 0.6, 1.7);
+  }
+
+  /**
+   * Ratio overflow: the follow framing is designed for 16:9. Narrower screens see less to the
+   * sides, so the camera pulls back a little in proportion to how far the aspect falls short.
+   */
+  fitScreen(aspect: number, preset = 1): void {
+    const overflow = Math.max(0, 16 / 9 / aspect - 1);
+    // Portrait already gets a wider vertical FOV (App.resize), so the pull-back stays gentle:
+    // about 6% on a 9:19.5 phone.
+    this.scale = preset * (1 + overflow * 0.025);
+  }
 
   follow(): void {
     this.mode = 'follow';
@@ -46,19 +65,21 @@ export class CameraRig {
   update(dt: number, subject: THREE.Vector3): void {
     if (this.mode === 'follow') {
       const back = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
+      const dist = this.distance * this.zoom * this.scale;
+      const height = this.height * this.zoom * this.scale;
       // Slide the camera in towards the player rather than letting it sit inside a building.
       let clear = 1;
       if (this.obstructed) {
         for (let i = 1; i <= 8; i++) {
           const t = i / 8;
-          if (this.obstructed(subject.x + back.x * this.distance * t, subject.z + back.z * this.distance * t)) {
+          if (this.obstructed(subject.x + back.x * dist * t, subject.z + back.z * dist * t)) {
             clear = Math.max(0.22, (i - 1) / 8);
             break;
           }
         }
       }
       this.pull += (clear - this.pull) * Math.min(1, dt * (clear < this.pull ? 14 : 3));
-      this.goalPos.copy(subject).addScaledVector(back, this.distance * this.pull).setY(subject.y + this.height * (0.55 + 0.45 * this.pull));
+      this.goalPos.copy(subject).addScaledVector(back, dist * this.pull).setY(subject.y + height * (0.55 + 0.45 * this.pull));
       this.goalLook.copy(subject).setY(subject.y + 1.3);
       // Ease back to normal follow speed after a shot hands over.
       this.sharpness += (6 - this.sharpness) * Math.min(1, dt * 1.5);

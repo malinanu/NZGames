@@ -38,7 +38,7 @@ export type AnimName =
   | 'Interact' | 'PickUp' | 'Throw' | 'Use_Item' | 'Hit_A' | 'Cheering' | 'Waving'
   | 'Sit_Chair_Idle' | 'Sit_Floor_Idle' | 'Lie_Idle' | 'Push_Ups' | 'Fishing_Idle' | 'Digging'
   | 'Hammering' | 'Holding_A' | 'Melee_Unarmed_Idle' | 'Ranged_Magic_Raise' | 'Sneaking'
-  | 'Walking_Backwards' | 'Skeletons_Taunt';
+  | 'Walking_Backwards' | 'Skeletons_Taunt' | 'Crawling';
 
 const ANIM_SETS = ['MovementBasic', 'General', 'Simulation', 'Tools', 'CombatMelee', 'CombatRanged', 'MovementAdvanced', 'Special'];
 let clipsPromise: Promise<Map<string, THREE.AnimationClip>> | null = null;

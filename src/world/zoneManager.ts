@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import type { CameraRig } from '../engine/cameraRig';
-import type { Input } from '../engine/input';
+import { glyph, type Device, type Input } from '../engine/input';
+
+const PADS: Device[] = ['keyboard', 'xbox', 'playstation'];
 import type { PlayerController } from '../character/controller';
 import type { GameZone, ZoneContext, ZoneDef } from '../zones/types';
 import { icon } from './icons';
@@ -236,13 +238,13 @@ export class ZoneManager {
         <p>${def.blurb}</p>
       </div>
       ${def.load
-        ? `<button class="btn btn-primary btn-play">${icon('play')}<span>Play</span></button>`
+        ? `<button class="btn btn-primary btn-play">${icon('play')}<span>Play</span>${PADS.map((d) => `<span class="glyph" data-for="${d}">${glyph('interact', d)}</span>`).join('')}</button>`
         : `<div class="soon-pill">${icon('lock', 18)}<span>Coming soon</span></div>`}`;
     this.prompt.querySelector('.btn-play')?.addEventListener('click', () => void this.enter(slot));
     this.prompt.hidden = false;
   }
 
-  /** Keyboard E / Enter. */
+  /** Keyboard E / Enter, gamepad B / Circle. */
   interact(): void {
     if (this.near && !this.active) void this.enter(this.near);
   }

@@ -24,7 +24,9 @@ import type { Place } from './build';
 import { buildCollect, type Collect } from './collect';
 import { buildLife, type Life } from './life';
 import { buildWorld, STREET_Z, type WorldMap } from './map';
-import { biomeAt, groundHeight, waterline } from './terrain';
+import { biomeAt, groundHeight, SEA_LEVEL, walkable, waterline } from './terrain';
+import { buildRipples } from './water';
+import { groundRing, RING_RADIUS } from './ring';
 import { ZoneManager } from './zoneManager';
 import { SPAWN } from './zones';
 import { icon } from './icons';
@@ -39,6 +41,26 @@ const app = new App(document.getElementById('game') as HTMLCanvasElement);
 const { scene, camera } = app;
 const rig = new CameraRig(camera);
 const input = new Input(app.canvas);
+// Prompts follow the device in use (html[data-input] drives CSS in world.css).
+input.onDevice((d) => (document.documentElement.dataset.input = d));
+// The touch joystick lives on the ground around the player; Input needs to know where that is.
+const ring = groundRing();
+scene.add(ring.object);
+const anchorAt = new THREE.Vector3();
+const anchorEdge = new THREE.Vector3();
+input.anchor = () => {
+  if (!player || mode !== 'walk') return null;
+  anchorAt.copy(player.position).project(camera);
+  anchorEdge.set(1, 0, 0).applyQuaternion(camera.quaternion).setY(0).normalize().multiplyScalar(RING_RADIUS).add(player.position).project(camera);
+  const x = ((anchorAt.x + 1) / 2) * window.innerWidth;
+  const y = ((1 - anchorAt.y) / 2) * window.innerHeight;
+  const ex = ((anchorEdge.x + 1) / 2) * window.innerWidth;
+  const ey = ((1 - anchorEdge.y) / 2) * window.innerHeight;
+  return { x, y, r: Math.hypot(ex - x, ey - y) };
+};
+// Ratio overflow and the quality preset set the follow distance; recomputed once resizing stops.
+rig.fitScreen(camera.aspect, quality.preset.cameraDistance);
+app.onResizeSettled(() => rig.fitScreen(camera.aspect, quality.preset.cameraDistance));
 const ambience = new Ambience();
 // ?debug exposes the scene for automated checks (never linked from anywhere).
 if (params.has('debug')) (window as unknown as { __debug?: unknown }).__debug = { scene: app.scene, camera: app.camera, THREE };
@@ -105,7 +127,12 @@ const placeLabel = hud.querySelector<HTMLElement>('[data-place]')!;
 const help = document.createElement('div');
 help.className = 'walk-help';
 help.hidden = true;
-help.innerHTML = `<span class="only-touch">Drag on the left to walk · drag on the right to look</span><span class="only-mouse">WASD to walk · Q/R to look · Space to jump · E to play</span>`;
+// One line per kind of device; CSS shows the one matching html[data-input].
+help.innerHTML = `
+  <span data-for="touch">Drag from your character to walk · tap them to jump · two fingers to look and zoom</span>
+  <span data-for="keyboard">WASD to walk · drag or Q/R to look · wheel to zoom · Space to jump · E to play</span>
+  <span data-for="xbox">Left stick to walk · right stick to look · A to jump · B to play · ☰ for the map</span>
+  <span data-for="playstation">Left stick to walk · right stick to look · ✕ to jump · ○ to play · Options for the map</span>`;
 document.body.appendChild(help);
 const mapEl = document.createElement('div');
 mapEl.className = 'map-sheet';
@@ -319,7 +346,7 @@ async function startWalking(cast: Character[], index: number): Promise<void> {
   refreshBadge();
 
   (window as unknown as { __world?: unknown }).__world = {
-    state: () => ({ mode, player: player.position.toArray().map((v) => +v.toFixed(2)), ground: +groundHeight(player.position.x, player.position.z).toFixed(2), anim: player.character.animation, fps: Math.round(app.fps), found: collect?.counts() }),
+    state: () => ({ mode, player: player.position.toArray().map((v) => +v.toFixed(2)), ground: +groundHeight(player.position.x, player.position.z).toFixed(2), anim: player.character.animation, water: player.water, fps: Math.round(app.fps), found: collect?.counts() }),
     zones: () => zones.list.map((z) => ({ id: z.def.id, playable: !!z.def.load, at: [+z.position.x.toFixed(1), +z.position.z.toFixed(1)] })),
     places: () => world.places,
     seats: () => world.seats,
@@ -332,6 +359,9 @@ async function startWalking(cast: Character[], index: number): Promise<void> {
       rig.yaw = yaw;
       rig.snap();
     },
+    anchor: () => input.anchor?.(),
+    zoom: () => +rig.zoom.toFixed(2),
+    input: () => ({ device: input.device, move: input.move.toArray().map((v) => +v.toFixed(2)), run: input.run, ring: { ...input.ring } }),
     enter: (id: string) => zones.enterById(id),
     leave: () => zones.leave(),
   };
@@ -425,18 +455,34 @@ function toggleMap(tab: 'map' | 'found' = 'map'): void {
 }
 
 /** A clear, walkable spot at a place (its centre may be a building or a tree). */
-function arrivalSpot(pl: Place): { x: number; z: number } {
+function arrivalSpot(pl: { x: number; z: number }, from = 0): { x: number; z: number } {
   const probe = new THREE.Vector3();
-  for (let r = 0; r < 14; r += 2) {
+  for (let r = from; r < from + 14; r += 2) {
     for (let a = 0; a < 6.28; a += 0.8) {
       probe.set(pl.x + Math.cos(a) * r, 0, pl.z + Math.sin(a) * r);
       const before = probe.clone();
       world.colliders.resolve(probe, 0.6);
-      if (before.distanceTo(probe) < 0.01) return { x: probe.x, z: probe.z };
+      if (before.distanceTo(probe) < 0.01 && walkable(probe.x, probe.z)) return { x: probe.x, z: probe.z };
     }
   }
   return { x: pl.x, z: pl.z };
 }
+
+// Unstuck: if you've been pushing to move for a couple of seconds without getting anywhere,
+// offer a button that hops you to the nearest clear spot.
+const unstuck = document.createElement('button');
+unstuck.className = 'btn btn-primary unstuck';
+unstuck.hidden = true;
+unstuck.textContent = 'Unstuck';
+document.body.appendChild(unstuck);
+let stuckTime = 0;
+unstuck.addEventListener('click', () => {
+  const spot = arrivalSpot(player.position, 3);
+  player.place(spot.x, spot.z, player.yaw);
+  rig.snap();
+  stuckTime = 0;
+  unstuck.hidden = true;
+});
 
 // ---------------------------------------------------------------------------
 // Frame
@@ -444,6 +490,10 @@ function arrivalSpot(pl: Place): { x: number; z: number } {
 const tmp = new THREE.Vector3();
 const focus = new THREE.Vector3();
 let stride = 0;
+// Rings spread from the player's legs while wading or swimming.
+const ripples = buildRipples();
+scene.add(ripples.object);
+let rippleTime = 0;
 let placeCheck = 0;
 const texel = (SHADOW_HALF * 2) / SHADOW_MAP;
 
@@ -460,16 +510,39 @@ app.onUpdate((dt, elapsed) => {
     input.update();
     if (mode === 'walk') {
       rig.yaw += input.consumeTurn();
+      rig.zoomBy(input.consumeZoom());
       if (input.consumeInteract()) zones.interact();
+      if (input.consumeMenu()) toggleMap();
       player.update(dt, input, rig.yaw);
-      // Footsteps by surface.
-      stride += player.speed * dt;
+      // Ground ring: the screen-space push turned into a world direction, like the controller.
+      const s = Math.sin(rig.yaw);
+      const c = Math.cos(rig.yaw);
+      const r = input.ring;
+      const feet = tmp.copy(player.position);
+      if (player.water === 'swim') feet.y = SEA_LEVEL;
+      ring.update(dt, feet, r.active, { x: -s * r.y + c * r.x, z: -c * r.y - s * r.x, amount: r.amount, run: r.run });
+      const pushing = input.move.length() > 0.4;
+      stuckTime = pushing && player.speed < 0.25 ? stuckTime + dt : Math.max(0, stuckTime - dt * 2);
+      unstuck.hidden = stuckTime < 2;
+      if (player.water !== 'dry') {
+        rippleTime -= dt;
+        if (rippleTime <= 0) {
+          ripples.pulse(player.position, SEA_LEVEL);
+          rippleTime = player.speed > 0.3 ? 0.32 : 1.1;
+        }
+      }
+      // Footsteps by surface (none while in the water).
+      stride += player.water === 'dry' ? player.speed * dt : 0;
       if (stride > 1.15) {
         stride = 0;
         const { x, z } = player.position;
         const onDeck = groundHeight(x, z) > 0.1 && Math.abs(z - STREET_Z) < 4.2;
         ambience.step(onDeck || x < -40 && x > -50 && z > 100 ? 'hard' : biomeAt(x, z) === 'beach' ? 'sand' : 'grass');
       }
+    } else {
+      unstuck.hidden = true;
+      ring.object.visible = false;
+      stuckTime = 0;
     }
     player.character.update(dt);
     zones.update(dt, elapsed);
@@ -477,7 +550,8 @@ app.onUpdate((dt, elapsed) => {
     if (mode === 'walk') collect?.update(dt, elapsed, player.position);
     rig.update(dt, player.position);
     playerShadow.position.set(player.position.x, groundHeight(player.position.x, player.position.z) + 0.03, player.position.z);
-    playerShadow.visible = mode === 'walk';
+    playerShadow.visible = mode === 'walk' && player.water === 'dry';
+    ripples.update(dt);
     focus.copy(mode === 'zone' ? camera.position.clone().add(camera.getWorldDirection(tmp).multiplyScalar(12)).setY(player.position.y) : player.position);
     ambience.update(biomeAt(player.position.x, player.position.z), waterline(player.position.x) - player.position.z, gpu.night.value as number);
 

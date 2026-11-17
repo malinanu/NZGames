@@ -20,7 +20,7 @@ export const CLIPS = {
   Tools: ['Fishing_Idle', 'Digging', 'Hammering', 'Holding_A'],
   CombatMelee: ['Melee_Unarmed_Idle'],
   CombatRanged: ['Ranged_Magic_Raise'],
-  MovementAdvanced: ['Sneaking', 'Walking_Backwards'],
+  MovementAdvanced: ['Sneaking', 'Walking_Backwards', 'Crawling'],
   Special: ['Skeletons_Taunt'],
 };
 
