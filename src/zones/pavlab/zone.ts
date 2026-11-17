@@ -255,7 +255,7 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
     start() {
       reset();
       phase = 'play';
-      ctx.player.place(v3(-0.6, 0, 0.1), Math.PI);
+      ctx.player.place(v3(-2.6, 0, -0.2), Math.PI / 2);
       // Stand just outside the tent, under the eaves, looking down at the bench.
       frame(ctx, v3(0, 2.25, 2.7), v3(0, 0.9, -0.95));
       render();
