@@ -92,6 +92,8 @@ export interface Placement {
  * Many copies of one prop as instanced meshes: one draw call per material instead of one per
  * copy. Used for trees, grass, fences, rocks and anything else that repeats.
  */
+const SCATTER_CELL = 80;
+
 export async function scatter(path: string, opts: PropOptions, places: Placement[]): Promise<THREE.Group> {
   const model = await loadProp(path);
   model.updateMatrixWorld(true);
@@ -103,21 +105,31 @@ export async function scatter(path: string, opts: PropOptions, places: Placement
   const placement = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const up = new THREE.Vector3(0, 1, 0);
+  // One instanced mesh per material per 80 m cell rather than one across the whole map, so
+  // frustum (and shadow camera) culling can drop the cells out of view.
+  const cells = new Map<string, Placement[]>();
+  for (const p of places) {
+    const key = `${Math.floor(p.x / SCATTER_CELL)},${Math.floor(p.z / SCATTER_CELL)}`;
+    if (!cells.has(key)) cells.set(key, []);
+    cells.get(key)!.push(p);
+  }
   model.traverse((o) => {
     const mesh = o as THREE.Mesh;
     if (!mesh.isMesh) return;
-    const im = new THREE.InstancedMesh(mesh.geometry, mesh.material, places.length);
-    im.castShadow = true;
-    im.receiveShadow = true;
     const local = base.clone().multiply(mesh.matrixWorld);
-    places.forEach((p, i) => {
-      const s = n.scale * (p.scale ?? 1);
-      q.setFromAxisAngle(up, p.rot ?? 0);
-      placement.compose(new THREE.Vector3(p.x, p.y ?? 0, p.z), q, new THREE.Vector3(s, s, s));
-      im.setMatrixAt(i, placement.clone().multiply(local));
-    });
-    im.computeBoundingSphere();
-    group.add(im);
+    for (const list of cells.values()) {
+      const im = new THREE.InstancedMesh(mesh.geometry, mesh.material, list.length);
+      im.castShadow = true;
+      im.receiveShadow = true;
+      list.forEach((p, i) => {
+        const s = n.scale * (p.scale ?? 1);
+        q.setFromAxisAngle(up, p.rot ?? 0);
+        placement.compose(new THREE.Vector3(p.x, p.y ?? 0, p.z), q, new THREE.Vector3(s, s, s));
+        im.setMatrixAt(i, placement.clone().multiply(local));
+      });
+      im.computeBoundingSphere();
+      group.add(im);
+    }
   });
   return group;
 }

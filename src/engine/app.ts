@@ -17,7 +17,8 @@ export class App {
   readonly canvas: HTMLCanvasElement;
   readonly renderer: WebGPURenderer;
   readonly scene = new THREE.Scene();
-  readonly camera = new THREE.PerspectiveCamera(55, 1, 0.2, 900);
+  // Far plane just past the fog: everything beyond ~320 m is fully fogged, so it can be culled.
+  readonly camera = new THREE.PerspectiveCamera(55, 1, 0.2, 420);
   private readonly updates = new Set<UpdateFn>();
   private readonly resizers = new Set<ResizeFn>();
   private readonly timer = new THREE.Timer();

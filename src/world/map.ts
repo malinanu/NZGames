@@ -10,8 +10,9 @@ import {
 } from './terrain';
 import { ZONES } from './zones';
 import { buildWorldData, type WorldData } from './dataTexture';
-import { buildFlowers, buildGrass, glowBulb, terrainMaterial } from './ground';
+import { buildFlowers, buildGrass, glowBulb, lighthouseLamp, terrainMaterial } from './ground';
 import { buildSea, buildStream, Buoyancy } from './water';
+import { batchStatic } from './batch';
 import { quality } from '../engine/quality';
 import { world } from '../engine/tsl';
 
@@ -151,6 +152,7 @@ export async function buildWorld(scene: THREE.Scene): Promise<WorldMap> {
 
   const walks: THREE.Vector2[][] = [];
   const animated: Animated = [];
+  const builtFrom = scene.children.length;
 
   township(b, walks);
   bachRoad(b);
@@ -168,12 +170,15 @@ export async function buildWorld(scene: THREE.Scene): Promise<WorldMap> {
     stone.castShadow = stone.receiveShadow = true;
     b.scene.add(stone);
   }
-  headland(b, roadBridgeY);
+  headland(b, roadBridgeY, animated);
   vegetation(b);
   scene.add(buildClouds(animated));
 
   await b.done();
-  for (const f of floaters) buoyancy.add(f, { draft: 0.35, tether: 2.5 });
+  for (const f of floaters) {
+    f.userData.dynamic = true;
+    buoyancy.add(f, { draft: 0.35, tether: 2.5 });
+  }
   // Toys off the beach, between the gull spot and the patrolled flags: free to nudge around.
   const ball = P.beachBall();
   ball.position.set(-3, SEA_LEVEL, waterline(-3) + 9);
@@ -185,7 +190,13 @@ export async function buildWorld(scene: THREE.Scene): Promise<WorldMap> {
     board.rotation.y = rand(0, 6.28);
     scene.add(board);
     buoyancy.add(board, { draft: 0.05, tether: 4, push: 0.9 });
+    board.userData.dynamic = true;
   }
+  ball.userData.dynamic = true;
+  // The grounding audit inspects the original props, so run it before they're baked together.
+  const problems = import.meta.env.DEV ? b.audit() : [];
+  const batched = batchStatic(scene.children.slice(builtFrom));
+  if (import.meta.env.DEV) console.info(`[batch] ${batched.before} static meshes -> ${batched.after}`);
   return {
     colliders,
     seats: b.seats,
@@ -195,7 +206,7 @@ export async function buildWorld(scene: THREE.Scene): Promise<WorldMap> {
       { from: new THREE.Vector3(STREET_X0 - 2, 0, STREET_Z - 1.3), to: new THREE.Vector3(STREET_X1 + 2, 0, STREET_Z - 1.3) },
       { from: new THREE.Vector3(STREET_X1 + 2, 0, STREET_Z + 1.3), to: new THREE.Vector3(STREET_X0 - 2, 0, STREET_Z + 1.3) },
     ],
-    audit: () => b.audit(),
+    audit: () => problems,
     update: (dt, elapsed) => {
       buoyancy.update(dt, elapsed, world.focal.value as THREE.Vector3);
       for (const fn of animated) fn(dt, elapsed);
@@ -487,6 +498,7 @@ function bush(b: Builder, footBridgeY: number, animated: Animated): void {
   b.colliders.box(127.5, -101.45, 13, 0.3);
   b.colliders.box(127.5, -98.55, 13, 0.3);
   const fall = P.waterfall();
+  fall.water.userData.dynamic = true;
   b.add(fall.object, 146, -153, 0);
   b.colliders.box(146, -156, 16, 5);
   animated.push((_dt, t) => {
@@ -500,7 +512,7 @@ function bush(b: Builder, footBridgeY: number, animated: Animated): void {
   b.many('resource/Wood_Log_B', { width: 1.6 }, [{ x: 33, z: -108, rot: 0.4 }, { x: 47.5, z: -108.5, rot: -0.5 }], 0.5);
 }
 
-function headland(b: Builder, roadBridgeY: number): void {
+function headland(b: Builder, roadBridgeY: number, animated: Animated): void {
   b.place('headland', 'Lighthouse', HEADLAND.x, HEADLAND.z, 34);
   b.place('estuary', 'Stream bridge', 140, 20, 16);
   const bx = streamX(STREET_Z);
@@ -512,7 +524,12 @@ function headland(b: Builder, roadBridgeY: number): void {
   b.colliders.box(bx, STREET_Z + 2.3, 13, 0.3);
   b.add(P.signpost('One lane', '#b3541e'), 125, STREET_Z - 4, -Math.PI / 2);
   b.add(P.signpost('Lighthouse'), 154, 25, -Math.PI / 2);
-  b.add(P.lighthouse(), HEADLAND.x + 3, HEADLAND.z + 3);
+  const lh = b.add(P.lighthouse(), HEADLAND.x + 3, HEADLAND.z + 3);
+  const { lamp, beam } = lighthouseLamp();
+  (lh.children[3] as THREE.Mesh).material = lamp; // the lamp room
+  beam.position.y = 10.05;
+  lh.add(beam);
+  animated.push((dt) => (beam.rotation.y += dt * 0.7));
   b.colliders.circle(HEADLAND.x + 3, HEADLAND.z + 3, 2.8);
   b.add(P.trigPoint(), HEADLAND.x - 5, HEADLAND.z - 4);
   b.colliders.circle(HEADLAND.x - 5, HEADLAND.z - 4, 0.7);
@@ -667,6 +684,7 @@ function buildBlossom(trees: Placement[], height: number): THREE.InstancedMesh {
 
 function buildClouds(animated: Animated): THREE.Group {
   const g = new THREE.Group();
+  g.userData.dynamic = true; // drifts across the sky
   const mat = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.92, fog: false });
   const puffs: THREE.Group[] = [];
   for (let i = 0; i < 16; i++) {

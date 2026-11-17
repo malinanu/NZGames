@@ -220,7 +220,6 @@ function prepare(def: CharacterDef): Promise<THREE.Object3D> {
         const mesh = o as THREE.SkinnedMesh;
         if (!mesh.isMesh) return;
         mesh.castShadow = true;
-        mesh.frustumCulled = false; // skinned bounds don't follow the animation
         const source = mesh.material as THREE.MeshStandardMaterial;
         if (source.map?.image) {
           atlas ??= recolourAtlas(source.map.image as HTMLImageElement, def);
@@ -278,6 +277,16 @@ function prepare(def: CharacterDef): Promise<THREE.Object3D> {
 export async function createCharacter(def: CharacterDef): Promise<Character> {
   const [template, clips] = await Promise.all([prepare(def), loadClips()]);
   const model = SkeletonUtils.clone(template);
+  // Skinned bounds are computed once from the pose, not per frame, so pad them generously
+  // (arms out, sitting, jumping) and let the camera cull characters that are out of view.
+  // Without this every NPC in the world was drawn twice a frame (main and shadow pass).
+  model.updateMatrixWorld(true);
+  model.traverse((o) => {
+    const mesh = o as THREE.SkinnedMesh;
+    if (!mesh.isSkinnedMesh) return;
+    mesh.computeBoundingSphere();
+    mesh.boundingSphere!.radius *= 1.8;
+  });
   const c = new Character(model, clips);
   c.root.name = `character:${def.id}`;
   c.def = def;

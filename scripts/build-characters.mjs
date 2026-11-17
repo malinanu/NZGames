@@ -5,7 +5,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { NodeIO } from '@gltf-transform/core';
-import { prune, dedup, resample } from '@gltf-transform/functions';
+import { prune, dedup, resample, quantize } from '@gltf-transform/functions';
+import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const src = path.join(root, 'assets-src/kaykit');
@@ -24,14 +25,20 @@ export const CLIPS = {
   Special: ['Skeletons_Taunt'],
 };
 
-const io = new NodeIO();
+const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
 const quiet = { debug() {}, info() {}, warn: console.warn, error: console.error };
 
 let bytes = 0;
 for (const name of CHARACTERS) {
   const from = path.join(src, 'characters', `${name}.glb`);
   const to = path.join(out, `${name}.glb`);
-  fs.copyFileSync(from, to);
+  // Quantised vertex data (KHR_mesh_quantization, decoded by three with no extra code):
+  // roughly half the download. Characters are never baked into batches, so normalised
+  // integer positions are safe here.
+  const doc = await io.read(from);
+  doc.setLogger(quiet);
+  await doc.transform(dedup(), quantize({ quantizePosition: 14, quantizeNormal: 10, quantizeTexcoord: 12 }), prune());
+  await io.write(to, doc);
   bytes += fs.statSync(to).size;
 }
 for (const [set, keep] of Object.entries(CLIPS)) {

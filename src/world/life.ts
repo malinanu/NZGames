@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeParts } from './batch';
 import { CHARACTERS, createCharacter, type AnimName, type Character } from '../character/character';
 import { spawnProp } from '../shared/assets';
 import { hashString, mulberry32 } from '../shared/rng';
@@ -234,7 +235,8 @@ function buildSheep(): THREE.Group {
   const g = group(body, box(0.26, 0.3, 0.34, '#2e2a2a', 0, 0.78, 0.66));
   for (const [x, z] of [[-0.2, -0.32], [0.2, -0.32], [-0.2, 0.32], [0.2, 0.32]]) g.add(box(0.09, 0.36, 0.09, '#2e2a2a', x, 0.18, z));
   for (const s of [-1, 1]) g.add(box(0.14, 0.06, 0.08, '#2e2a2a', s * 0.18, 0.9, 0.6));
-  return g;
+  // Rigid, so wool and the dark face/legs bake into two meshes (8 draws down to 2 per sheep).
+  return mergeParts(g);
 }
 
 /** Body, then two wings as children 1 and 2 (the flap animation relies on that order). */

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { MeshBasicNodeMaterial, MeshLambertNodeMaterial } from 'three/webgpu';
-import { attribute, color, cos, float, mix, positionGeometry, positionWorld, sin, smoothstep, step, texture, vec2, vec3 } from 'three/tsl';
+import { attribute, color, cos, float, mix, positionGeometry, positionWorld, sin, smoothstep, step, texture, uv, vec2, vec3 } from 'three/tsl';
 import { world } from '../engine/tsl';
 import type { QualityPreset } from '../engine/quality';
 import { hashString, mulberry32 } from '../shared/rng';
@@ -126,8 +126,37 @@ export function buildFlowers(data: WorldData, preset: QualityPreset): THREE.Grou
 }
 
 /** A lamp bulb that lights up at dusk: put one on every lantern and streetlight. */
+const bulbMats = new Map<string, MeshBasicNodeMaterial>();
 export function glowBulb(hex = '#ffe9a3', radius = 0.18): THREE.Mesh {
-  const m = new MeshBasicNodeMaterial();
-  m.colorNode = mix(color('#8a8070'), color(hex).mul(1.6), world.night);
+  // One material per colour, so all the bulbs of a colour batch into one draw.
+  let m = bulbMats.get(hex);
+  if (!m) {
+    m = new MeshBasicNodeMaterial();
+    m.colorNode = mix(color('#8a8070'), color(hex).mul(1.6), world.night);
+    bulbMats.set(hex, m);
+  }
   return new THREE.Mesh(new THREE.SphereGeometry(radius, 10, 8), m);
+}
+
+/**
+ * The lighthouse at night: the lamp room lights up and two soft beams sweep round. Both fade
+ * in with the night uniform, so by day it is just a white-and-red lighthouse.
+ */
+export function lighthouseLamp(): { lamp: THREE.Material; beam: THREE.Group } {
+  const lamp = new MeshBasicNodeMaterial();
+  lamp.colorNode = mix(color('#d9d2b8'), color('#fff3c4').mul(2.2), world.night);
+  const m = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
+  m.colorNode = color('#fff1c2');
+  // Bright at the lamp, fading out along the beam; nothing by day.
+  m.opacityNode = float(1).sub(uv().y).pow(1.6).mul(0.3).mul(world.night);
+  const beam = new THREE.Group();
+  for (const dir of [1, -1]) {
+    const geo = new THREE.CylinderGeometry(4.5, 0.45, 46, 18, 1, true).translate(0, 23, 0).rotateZ((-Math.PI / 2) * dir);
+    const cone = new THREE.Mesh(geo, m);
+    cone.renderOrder = 5;
+    cone.frustumCulled = false;
+    beam.add(cone);
+  }
+  beam.userData.dynamic = true;
+  return { lamp, beam };
 }

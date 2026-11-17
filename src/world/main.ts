@@ -63,13 +63,13 @@ rig.fitScreen(camera.aspect, quality.preset.cameraDistance);
 app.onResizeSettled(() => rig.fitScreen(camera.aspect, quality.preset.cameraDistance));
 const ambience = new Ambience();
 // ?debug exposes the scene for automated checks (never linked from anywhere).
-if (params.has('debug')) (window as unknown as { __debug?: unknown }).__debug = { scene: app.scene, camera: app.camera, THREE };
+if (params.has('debug')) (window as unknown as { __debug?: unknown }).__debug = { scene: app.scene, camera: app.camera, renderer: app.renderer, THREE };
 
 // ---------------------------------------------------------------------------
 // Sky and light: a TSL sky dome, one sun on a circular path, Day/Dusk/Night/Dawn presets
 // (see sky.ts) and fog measured from the player rather than the camera (see engine/tsl.ts).
 // ---------------------------------------------------------------------------
-const sky = new THREE.Mesh(new THREE.SphereGeometry(560, 24, 12), skyMaterial());
+const sky = new THREE.Mesh(new THREE.SphereGeometry(390, 24, 12), skyMaterial()); // inside the far plane
 sky.renderOrder = -1;
 scene.add(sky);
 installFog(scene);
@@ -425,11 +425,23 @@ function toggleMap(tab: 'map' | 'found' = 'map'): void {
               <small>${Math.round(pl.d)} m</small>
             </button></li>`).join('')}
         </ul>
+        <h3>Graphics</h3>
+        <div class="quality-row" role="group" aria-label="Graphics quality">
+          <button data-quality="low" aria-pressed="${quality.preset.name === 'low'}">Smooth<small>Longer battery, simpler water and grass</small></button>
+          <button data-quality="high" aria-pressed="${quality.preset.name === 'high'}">Detailed<small>Sharper, more grass, glowing flowers</small></button>
+        </div>
+        <p class="build-stamp">Drawing with ${app.backend}</p>
       </div>
       <div data-pane="found" class="notebook" ${tab === 'found' ? '' : 'hidden'}>${collect?.html() ?? ''}</div>
     </div>`;
   mapEl.hidden = false;
   mapEl.querySelector('[data-close]')!.addEventListener('click', () => (mapEl.hidden = true));
+  mapEl.querySelectorAll<HTMLButtonElement>('[data-quality]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const q = b.dataset.quality as 'low' | 'high';
+      if (q !== quality.preset.name) quality.set(q); // reloads: grass and shadows are built once
+    }),
+  );
   mapEl.onclick = (e) => {
     if (e.target === mapEl) mapEl.hidden = true;
   };
