@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
-import { color, float, fract, mix, positionGeometry, sin, smoothstep, step, uniform } from 'three/tsl';
+import { color, float, fract, mix, positionGeometry, positionWorld, sin, smoothstep, step, texture, uniform } from 'three/tsl';
+import { world } from '../../engine/tsl';
+import { buildWorldData } from '../../world/dataTexture';
+import { worldUv } from '../../world/ground';
 import { hashString, mulberry32, nzDateLabel } from '../../shared/rng';
 import { SEA_LEVEL, waterline } from '../../world/terrain';
 import { best, disposeTree, frame, helper, mesh, pointer, v3 } from '../kit';
@@ -46,19 +49,25 @@ export async function createZone(ctx: ZoneContext): Promise<GameZone> {
     const t = uniforms.uTime;
     // Rows of breaking waves over the sandbar. A rip breaks the rows: no foam, darker, flat-looking.
     const wave = fract(dist.mul(0.14).add(t.mul(0.22)).add(sin(x.mul(0.15)).mul(0.15)));
-    const foam = smoothstep(float(0.86), float(0.98), wave).mul(smoothstep(float(3), float(7), dist)).mul(float(1).sub(smoothstep(float(26), float(33), dist)))
-      .add(float(1).sub(smoothstep(float(0), float(1.6), dist)).mul(0.9))
+    // Depth from the same world data texture as the sea, so the patch follows the real, curved
+    // waterline and uses the sea's own colours: it reads as part of the bay, not a panel on it.
+    const depth = texture(buildWorldData().data, worldUv(positionWorld.x, positionWorld.z)).b.mul(4);
+    const foam = smoothstep(float(0.86), float(0.98), wave).mul(smoothstep(float(0.35), float(0.9), depth)).mul(float(1).sub(smoothstep(float(26), float(33), dist)))
       .mul(float(1).sub(r.mul(0.92)));
-    let col = mix(color('#4dccc7'), color('#126e99'), smoothstep(float(2), float(20), dist));
-    col = mix(col, color('#12576b'), r.mul(smoothstep(float(1), float(6), dist)));
+    let col = mix(color('#48d4c8'), color('#0d6a98'), smoothstep(float(0.2), float(3.6), depth));
+    col = mix(col, color('#12576b'), r.mul(smoothstep(float(0.3), float(1.2), depth)));
     // A rip carries sand and foam scraps out to sea: faint streaks moving offshore.
     const streak = smoothstep(float(0.92), float(1), fract(dist.mul(0.35).sub(t.mul(0.6)).add(x.mul(0.4)))).mul(r).mul(0.25);
     col = mix(col, color('#9ea88c'), streak);
-    col = mix(col, color('#ffffff'), foam.clamp(0, 1).mul(0.9));
+    col = mix(col, color('#ffffff'), foam.clamp(0, 1).mul(0.85));
     // After the round, outline the rips so players learn the look.
     col = mix(col, color('#ff5940'), uniforms.uShow.mul(r).mul(sin(t.mul(6)).mul(0.25).add(0.35)));
-    surfMat.colorNode = col;
-    surfMat.opacityNode = smoothstep(float(0), float(0.6), dist);
+    // Unlit: follow the day/night light like the rest of the water.
+    surfMat.colorNode = col.mul(world.light);
+    // Nothing on dry sand, and soft on every side so no edge of the patch ever shows.
+    const sides = float(1).sub(smoothstep(float(HALF_BEACH - 4), float(HALF_BEACH + 10), x.abs()));
+    const far = float(1).sub(smoothstep(float(22), float(33), dist));
+    surfMat.opacityNode = smoothstep(float(0.02), float(0.3), depth).mul(sides).mul(far).mul(0.95);
   }
   const surf = new THREE.Mesh(new THREE.PlaneGeometry(HALF_BEACH * 2 + 20, 34, 1, 1), surfMat);
   surf.rotation.x = -Math.PI / 2;
